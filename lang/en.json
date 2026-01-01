@@ -1,0 +1,28 @@
+{
+  "SESSION_REPORT": {
+    "ModuleName": "Session Report",
+    "Settings": {
+      "EndpointURL": {
+        "Name": "API Endpoint URL",
+        "Hint": "The URL endpoint where session data will be sent"
+      },
+      "ApiKey": {
+        "Name": "API Key (Optional)",
+        "Hint": "Optional API key for authentication with the endpoint"
+      }
+    },
+    "Button": {
+      "SendReport": "Send Session Report"
+    },
+    "Modal": {
+      "Title": "Session Report",
+      "SelectCharacters": "Select Characters to Report",
+      "NoCharacters": "No player characters found",
+      "SendButton": "Send Report",
+      "CancelButton": "Cancel",
+      "Success": "Session report sent successfully!",
+      "Error": "Failed to send session report: {error}",
+      "NoEndpoint": "Please configure the API endpoint URL in module settings first."
+    }
+  }
+}

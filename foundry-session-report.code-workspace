@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../systems/foundry-rifts-palladium/src/libs"
+		},
+		{
+			"path": "../../systems/foundry-rifts-palladium/src/module"
+		}
+	],
+	"settings": {}
+}

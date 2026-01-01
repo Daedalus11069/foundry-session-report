@@ -1,0 +1,18 @@
+/* Session Report Module Styles */
+
+.session-report-dialog {
+    font-family: var(--font-primary, "Signika", sans-serif);
+}
+
+.session-report-dialog .window-content {
+    background: var(--color-bg, #f8f9fa);
+    padding: 0;
+}
+
+.session-report-dialog .window-content [data-application-part="content"] {
+    height: 100%;
+}
+
+.dark .session-report-dialog .window-content {
+    background: var(--color-bg-dark, #1a1a1a);
+}
