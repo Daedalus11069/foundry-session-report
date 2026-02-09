@@ -22,6 +22,10 @@
         "Name": "Session ID",
         "Hint": "Unique identifier for the current session"
       },
+      "AutoCreateSession": {
+        "Name": "Auto-Create New Session",
+        "Hint": "Automatically create a new session when sending a report (skips the confirmation prompt)"
+      },
       "ShowButtonsToPlayers": {
         "Name": "Show Session Report Buttons",
         "Hint": "Enable the Session Report button on player character sheets"

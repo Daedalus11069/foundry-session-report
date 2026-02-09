@@ -20,7 +20,7 @@ import "./session-report.css";
  *   Hooks.on("sessionReportResults", (results) => {
  *     // results is an array of objects with:
  *     // - player_id: string (Foundry user ID)
- *     // - character_id: number (database character ID)
+ *     // - character_id: string (Foundry actor ID)
  *     // - character_name: string
  *     // - total: number (final point total including GM bonuses)
  *     // - reasons: string[] (array of reward titles that were selected)
@@ -85,6 +85,16 @@ Hooks.once("init", () => {
     config: true,
     type: Number,
     default: 0
+  });
+
+  // Register auto-create session setting
+  game.settings.register(MODULE_ID, "autoCreateSession", {
+    name: "SESSION_REPORT.Settings.AutoCreateSession.Name",
+    hint: "SESSION_REPORT.Settings.AutoCreateSession.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
   });
 
   // Register button visibility setting (GM only)
@@ -512,6 +522,51 @@ async function openSessionReportModal() {
     return;
   }
 
+  // Check if we should create a new session
+  const autoCreateSession = game.settings.get(
+    MODULE_ID,
+    "autoCreateSession"
+  ) as boolean;
+  const currentSessionId = game.settings.get(MODULE_ID, "sessionId") as number;
+
+  // If auto-create is enabled, create automatically without asking
+  if (autoCreateSession) {
+    try {
+      await createNewSessionFromButton();
+    } catch (error) {
+      console.error("Session Report | Failed to create session:", error);
+      ui.notifications?.error(
+        "Failed to create new session. Continuing with existing session ID..."
+      );
+    }
+  }
+  // Otherwise, if no session exists, ask if they want to create one
+  else if (!currentSessionId || currentSessionId === 0) {
+    const shouldCreate = await foundry.applications.api.DialogV2.confirm({
+      window: { title: "Create New Session?" },
+      content: `<p>No active session found. Would you like to create a new session before sending the report?</p>`,
+      modal: true,
+      rejectClose: false
+    });
+
+    if (shouldCreate) {
+      try {
+        await createNewSessionFromButton();
+      } catch (error) {
+        console.error("Session Report | Failed to create session:", error);
+        ui.notifications?.error(
+          "Failed to create new session. Cannot send report without a session."
+        );
+        return;
+      }
+    } else {
+      ui.notifications?.warn(
+        "Cannot send report without a session. Please create a session first."
+      );
+      return;
+    }
+  }
+
   // Gather character data
   const characters = getPlayerCharacters();
 
@@ -575,6 +630,62 @@ async function openSessionReportModal() {
     await game.settings.set(MODULE_ID, "gameId", game_id);
     await game.settings.set(MODULE_ID, "sessionId", session_id);
   }
+}
+
+/**
+ * Create a new session (called from button)
+ */
+async function createNewSessionFromButton() {
+  const endpointURL = game.settings.get(MODULE_ID, "endpointURL") as string;
+  const apiKey = game.settings.get(MODULE_ID, "apiKey") as string;
+  const actorTypeFilter = game.settings.get(
+    MODULE_ID,
+    "actorTypeFilter"
+  ) as string;
+  const actors = game.actors || [];
+
+  // Filter by the specified actor type (default: "pc")
+  const characters = actors.filter(
+    (actor: any) => actor.type === actorTypeFilter
+  );
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+
+  if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+
+  const response = await fetch(`${endpointURL}/set-characters`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      characters: characters.map((char: any) => ({
+        id: char.id,
+        name: char.name,
+        img: char.img,
+        ownerId: char.ownership
+          ? Object.keys(char.ownership).find(
+              (userId: string) =>
+                char.ownership[userId] === 3 && userId !== "default"
+            )
+          : null
+      }))
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  // Update settings with new IDs
+  await game.settings.set(MODULE_ID, "gameId", data.game_id);
+  await game.settings.set(MODULE_ID, "sessionId", data.session_id);
+
+  ui.notifications?.info(`Session ${data.session_id} created successfully`);
 }
 
 /**
@@ -740,7 +851,7 @@ Hooks.on("session-report.registerExternalButtons", async (registry: any) => {
       return url || "#";
     },
     isVisible: (actor: any) => {
-      // Only show if endpoint is configured and session ID is set
+      // Only show if endpoint is configured (session ID is now optional)
       const endpointURL = game.settings.get(MODULE_ID, "endpointURL") as string;
       const sessionId = game.settings.get(MODULE_ID, "sessionId") as number;
       const showToPlayers = game.settings.get(
@@ -748,12 +859,8 @@ Hooks.on("session-report.registerExternalButtons", async (registry: any) => {
         "showButtonsToPlayers"
       ) as boolean;
 
-      // Check basic requirements
-      const hasRequiredSettings =
-        endpointURL &&
-        endpointURL.trim() !== "" &&
-        sessionId &&
-        sessionId !== 0;
+      // Check basic requirements (sessionId is now optional)
+      const hasRequiredSettings = endpointURL && endpointURL.trim() !== "";
 
       if (!hasRequiredSettings) {
         return false;

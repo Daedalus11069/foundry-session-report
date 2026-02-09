@@ -165,7 +165,7 @@ const isGM = computed(() => {
 });
 
 interface CharacterResult {
-  character_id: number;
+  character_id: string; // Foundry actor ID
   character_name: string;
   owner_id: string;
   reward_tallies: Record<string, number>;
@@ -199,7 +199,7 @@ interface Props {
 const props = defineProps<Props>();
 
 // Track GM-awarded rewards per character
-const gmAwardedRewards = reactive<Record<number, Record<string, number>>>({});
+const gmAwardedRewards = reactive<Record<string, Record<string, number>>>({});
 
 const characterResults = computed(() => {
   return props.apiResults?.characters || [];
@@ -228,7 +228,7 @@ function getFinalTotal(char: CharacterResult): number {
 }
 
 // Get GM bonus for a character
-function getGmBonusTotal(characterId: number): number {
+function getGmBonusTotal(characterId: string): number {
   const awards = gmAwardedRewards[characterId];
   if (!awards) return 0;
 
@@ -239,12 +239,12 @@ function getGmBonusTotal(characterId: number): number {
 }
 
 // Get count of GM reward for character
-function getGmRewardCount(characterId: number, rewardTitle: string): number {
+function getGmRewardCount(characterId: string, rewardTitle: string): number {
   return gmAwardedRewards[characterId]?.[rewardTitle] || 0;
 }
 
 // Add GM reward to character
-function addGmReward(characterId: number, reward: GmReward) {
+function addGmReward(characterId: string, reward: GmReward) {
   if (!gmAwardedRewards[characterId]) {
     gmAwardedRewards[characterId] = {};
   }
@@ -255,7 +255,7 @@ function addGmReward(characterId: number, reward: GmReward) {
 }
 
 // Remove GM reward from character
-function removeGmReward(characterId: number, reward: GmReward) {
+function removeGmReward(characterId: string, reward: GmReward) {
   if (!gmAwardedRewards[characterId]?.[reward.title]) return;
 
   gmAwardedRewards[characterId][reward.title]--;
