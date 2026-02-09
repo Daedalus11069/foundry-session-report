@@ -2,17 +2,91 @@
   "SESSION_REPORT": {
     "ModuleName": "Session Report",
     "Settings": {
+      "Title": "Session Report Configuration",
+      "Description": "Configure the API endpoint and authentication settings for the Session Report module.",
       "EndpointURL": {
         "Name": "API Endpoint URL",
-        "Hint": "The URL endpoint where session data will be sent"
+        "Hint": "The URL endpoint where session data will be sent",
+        "Placeholder": "https://api.example.com/session-report"
       },
       "ApiKey": {
-        "Name": "API Key (Optional)",
-        "Hint": "Optional API key for authentication with the endpoint"
-      }
+        "Name": "API Key",
+        "Hint": "API key for authentication with the endpoint",
+        "Placeholder": "Enter your API key"
+      },
+      "GameId": {
+        "Name": "Game ID",
+        "Hint": "Unique identifier for this game/campaign"
+      },
+      "SessionId": {
+        "Name": "Session ID",
+        "Hint": "Unique identifier for the current session"
+      },
+      "ShowButtonsToPlayers": {
+        "Name": "Show Session Report Buttons",
+        "Hint": "Enable the Session Report button on player character sheets"
+      },
+      "ActorTypeFilter": {
+        "Name": "Actor Type Filter",
+        "Hint": "Specify which actor types to include (e.g., 'pc' for player characters, 'character', 'npc', etc.). Configure this based on your game system."
+      },
+      "PusherAppKey": {
+        "Name": "Pusher App Key",
+        "Hint": "Your Pusher application key for real-time survey results"
+      },
+      "PusherCluster": {
+        "Name": "Pusher Cluster",
+        "Hint": "Pusher cluster region (e.g., us2, eu, ap1)"
+      },
+      "TestConnection": {
+        "Title": "Test Connection",
+        "Description": "Send a test request to verify the endpoint is reachable.",
+        "Button": "Test Connection",
+        "ButtonTesting": "Testing...",
+        "ErrorNoEndpoint": "Please enter an endpoint URL first."
+      },
+      "SaveButton": "Save Settings",
+      "CancelButton": "Cancel",
+      "SaveSuccess": "Session Report settings saved successfully!",
+      "SaveError": "Failed to save settings"
     },
     "Button": {
-      "SendReport": "Send Session Report"
+      "SendReport": "Send Session Report",
+      "SendSurvey": "Send Player Surveys",
+      "CloseSurvey": "Close Survey"
+    },
+    "Survey": {
+      "Title": "Post-Session Character Survey",
+      "Message": "Please visit the link below to complete your post-session character survey. You'll be able to vote on characters that are not your own.",
+      "Help": "Click the button below to open the survey in a new tab, or copy the URL to access it later.",
+      "OpenButton": "Open Survey",
+      "CloseButton": "Close",
+      "CopyUrl": "Copy URL to clipboard",
+      "CopySuccess": "Survey URL copied to clipboard!",
+      "CopyFallback": "Please copy the URL manually",
+      "NoEndpoint": "Please configure the API endpoint URL in module settings first.",
+      "Sending": "Sending survey URLs to players...",
+      "Success": "Survey URLs sent to {count} player(s)",
+      "Error": "Failed to send survey URLs: {error}",
+      "NoPlayers": "No eligible players found to send surveys to"
+    },
+    "SurveyResults": {
+      "Title": "Survey Results",
+      "Subtitle": "View completed post-session character surveys",
+      "Character": "Character",
+      "Votes": "Character Votes",
+      "Feedback": "Additional Feedback",
+      "Responses": "Survey Responses",
+      "NoResults": "No survey results received yet",
+      "ClearButton": "Clear Results",
+      "ExportButton": "Export Results",
+      "CloseButton": "Close",
+      "ClearConfirm": "Are you sure you want to clear all survey results? This cannot be undone.",
+      "ClearSuccess": "Survey results cleared",
+      "ExportSuccess": "Survey results exported successfully",
+      "ExportError": "Failed to export survey results",
+      "NewResultReceived": "New survey result received from {playerName}",
+      "ViewResults": "View Survey Results"
     },
     "Modal": {
       "Title": "Session Report",
@@ -23,6 +97,11 @@
       "Success": "Session report sent successfully!",
       "Error": "Failed to send session report: {error}",
       "NoEndpoint": "Please configure the API endpoint URL in module settings first."
+    },
+    "TestResult": {
+      "Success": "Connection successful! (HTTP {status})",
+      "Failed": "Connection failed: HTTP {status} - {statusText}",
+      "Error": "Connection error: {message}"
     }
   }
 }

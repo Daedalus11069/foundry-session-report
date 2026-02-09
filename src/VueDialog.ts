@@ -35,7 +35,7 @@ export class VueDialog extends foundry.applications.api.ApplicationV2 {
       icon: "",
       controls: [],
       minimizable: false,
-      resizable: false
+      resizable: true
     },
     actions: {},
     form: {

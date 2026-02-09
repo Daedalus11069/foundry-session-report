@@ -1,14 +1,13 @@
 <template>
   <div class="settings-config">
-    <div class="settings-header mb-4">
-      <p class="text-lg">
-        Configure the API endpoint and authentication settings for the Session
-        Report module.
+    <div class="settings-header">
+      <p class="description">
+        {{ localize("SESSION_REPORT.Settings.Description") }}
       </p>
     </div>
 
     <div class="settings-form">
-      <div class="form-group mb-4">
+      <div class="form-group">
         <label for="endpoint-url" class="form-label">
           {{ localize("SESSION_REPORT.Settings.EndpointURL.Name") }}
         </label>
@@ -16,15 +15,17 @@
           id="endpoint-url"
           type="text"
           v-model="endpointURL"
-          :placeholder="'https://api.example.com/session-report'"
+          :placeholder="
+            localize('SESSION_REPORT.Settings.EndpointURL.Placeholder')
+          "
           class="form-input"
         />
-        <p class="form-hint text-sm text-gray-600 dark:text-gray-400 mt-1">
+        <p class="form-hint">
           {{ localize("SESSION_REPORT.Settings.EndpointURL.Hint") }}
         </p>
       </div>
 
-      <div class="form-group mb-4">
+      <div class="form-group">
         <label for="api-key" class="form-label">
           {{ localize("SESSION_REPORT.Settings.ApiKey.Name") }}
         </label>
@@ -32,52 +33,95 @@
           id="api-key"
           type="password"
           v-model="apiKey"
-          placeholder="Optional API key for authentication"
+          :placeholder="localize('SESSION_REPORT.Settings.ApiKey.Placeholder')"
           class="form-input"
         />
-        <p class="form-hint text-sm text-gray-600 dark:text-gray-400 mt-1">
+        <p class="form-hint">
           {{ localize("SESSION_REPORT.Settings.ApiKey.Hint") }}
         </p>
       </div>
 
-      <div class="test-section mb-4 p-4 bg-gray-100 dark:bg-gray-800 rounded">
-        <h3 class="font-bold mb-2">Test Connection</h3>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
-          Send a test request to verify the endpoint is reachable.
+      <div class="form-group">
+        <label for="pusher-app-key" class="form-label">
+          {{ localize("SESSION_REPORT.Settings.PusherAppKey.Name") }}
+        </label>
+        <input
+          id="pusher-app-key"
+          type="text"
+          v-model="pusherAppKey"
+          placeholder="Enter your Pusher app key"
+          class="form-input"
+        />
+        <p class="form-hint">
+          {{ localize("SESSION_REPORT.Settings.PusherAppKey.Hint") }}
         </p>
-        <button
+      </div>
+
+      <div class="form-group">
+        <label for="pusher-cluster" class="form-label">
+          {{ localize("SESSION_REPORT.Settings.PusherCluster.Name") }}
+        </label>
+        <input
+          id="pusher-cluster"
+          type="text"
+          v-model="pusherCluster"
+          placeholder="us2"
+          class="form-input"
+        />
+        <p class="form-hint">
+          {{ localize("SESSION_REPORT.Settings.PusherCluster.Hint") }}
+        </p>
+      </div>
+
+      <div class="test-section">
+        <h3 class="test-section-title">
+          {{ localize("SESSION_REPORT.Settings.TestConnection.Title") }}
+        </h3>
+        <p class="test-section-description">
+          {{ localize("SESSION_REPORT.Settings.TestConnection.Description") }}
+        </p>
+        <Button
           @click="testConnection"
           :disabled="!endpointURL || testing"
-          class="btn btn-test"
+          class="btn-test"
+          severity="secondary"
+          size="small"
         >
-          {{ testing ? "Testing..." : "Test Connection" }}
-        </button>
+          <i class="fas fa-plug" />
+          {{
+            testing
+              ? localize("SESSION_REPORT.Settings.TestConnection.ButtonTesting")
+              : localize("SESSION_REPORT.Settings.TestConnection.Button")
+          }}
+        </Button>
         <div
           v-if="testResult"
-          class="test-result mt-3 p-3 rounded"
+          class="test-result"
           :class="
-            testResult.success
-              ? 'bg-green-100 dark:bg-green-900'
-              : 'bg-red-100 dark:bg-red-900'
+            testResult.success ? 'test-result-success' : 'test-result-error'
           "
         >
-          <p
-            class="text-sm"
+          <i
             :class="
               testResult.success
-                ? 'text-green-800 dark:text-green-200'
-                : 'text-red-800 dark:text-red-200'
+                ? 'fas fa-check-circle'
+                : 'fas fa-exclamation-circle'
             "
-          >
-            {{ testResult.message }}
-          </p>
+          />
+          <span>{{ testResult.message }}</span>
         </div>
       </div>
     </div>
 
-    <div class="footer-section mt-6 flex gap-3 justify-end">
-      <button @click="cancel" class="btn btn-secondary">Cancel</button>
-      <button @click="save" class="btn btn-primary">Save Settings</button>
+    <div class="footer-section">
+      <button @click="cancel" class="btn btn-secondary">
+        <i class="fas fa-times" />
+        {{ localize("SESSION_REPORT.Settings.CancelButton") }}
+      </button>
+      <button @click="save" class="btn btn-primary">
+        <i class="fas fa-save" />
+        {{ localize("SESSION_REPORT.Settings.SaveButton") }}
+      </button>
     </div>
   </div>
 </template>
@@ -101,6 +145,12 @@ const endpointURL = ref(
 const apiKey = ref(
   (game.settings.get("session-report", "apiKey") as string) || ""
 );
+const pusherAppKey = ref(
+  (game.settings.get("session-report", "pusherAppKey") as string) || ""
+);
+const pusherCluster = ref(
+  (game.settings.get("session-report", "pusherCluster") as string) || "us2"
+);
 const testing = ref(false);
 const testResult = ref<{ success: boolean; message: string } | null>(null);
 
@@ -108,7 +158,9 @@ const testConnection = async () => {
   if (!endpointURL.value) {
     testResult.value = {
       success: false,
-      message: "Please enter an endpoint URL first."
+      message: localize(
+        "SESSION_REPORT.Settings.TestConnection.ErrorNoEndpoint"
+      )
     };
     return;
   }
@@ -138,20 +190,26 @@ const testConnection = async () => {
     if (response.ok) {
       testResult.value = {
         success: true,
-        message: `Connection successful! (HTTP ${response.status})`
+        message: localize("SESSION_REPORT.TestResult.Success").replace(
+          "{status}",
+          String(response.status)
+        )
       };
     } else {
       testResult.value = {
         success: false,
-        message: `Connection failed: HTTP ${response.status} - ${response.statusText}`
+        message: localize("SESSION_REPORT.TestResult.Failed")
+          .replace("{status}", String(response.status))
+          .replace("{statusText}", response.statusText)
       };
     }
   } catch (error) {
     testResult.value = {
       success: false,
-      message: `Connection error: ${
+      message: localize("SESSION_REPORT.TestResult.Error").replace(
+        "{message}",
         error instanceof Error ? error.message : String(error)
-      }`
+      )
     };
   } finally {
     testing.value = false;
@@ -162,11 +220,23 @@ const save = async () => {
   try {
     await game.settings.set("session-report", "endpointURL", endpointURL.value);
     await game.settings.set("session-report", "apiKey", apiKey.value);
+    await game.settings.set(
+      "session-report",
+      "pusherAppKey",
+      pusherAppKey.value
+    );
+    await game.settings.set(
+      "session-report",
+      "pusherCluster",
+      pusherCluster.value
+    );
 
-    ui.notifications?.info("Session Report settings saved successfully!");
+    ui.notifications?.info(localize("SESSION_REPORT.Settings.SaveSuccess"));
     props.dialog?.submit(true);
   } catch (error) {
-    ui.notifications?.error("Failed to save settings: " + error);
+    ui.notifications?.error(
+      localize("SESSION_REPORT.Settings.SaveError") + ": " + error
+    );
   }
 };
 
@@ -179,40 +249,170 @@ const cancel = () => {
 .settings-config {
   padding: 1rem;
   min-width: 500px;
+  background: url("/ui/parchment.jpg") no-repeat center center;
+  background-size: cover;
+  color: #444;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.settings-header .description {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  color: #555;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .form-label {
   display: block;
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  font-size: 14px;
+  color: #333;
+  margin: 0;
 }
 
 .form-input {
   width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 3px;
   font-size: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+  font-family: inherit;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
-.dark .form-input {
-  background: #2a2a2a;
-  border-color: #444;
-  color: #fff;
+.form-input:focus {
+  outline: none;
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.1);
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #666;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.test-section {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.test-section-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0;
+  color: #333;
+}
+
+.test-section-description {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.btn-test {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.test-result {
+  padding: 0.75rem;
+  border-radius: 3px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: fadeIn 0.3s;
+}
+
+.test-result-success {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #047857;
+}
+
+.test-result-error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #b91c1c;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.footer-section {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: 3px;
   border: none;
   cursor: pointer;
   font-weight: 500;
+  font-size: 14px;
+  font-family: inherit;
   transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.btn:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none !important;
 }
 
 .btn-primary {
@@ -233,12 +433,28 @@ const cancel = () => {
   background: #5a6268;
 }
 
-.btn-test {
-  background: #28a745;
-  color: white;
+.dark .form-input {
+  background: rgba(42, 42, 42, 0.9);
+  border-color: #444;
+  color: #ddd;
 }
 
-.btn-test:hover:not(:disabled) {
-  background: #218838;
+.dark .form-label {
+  color: #ddd;
+}
+
+.dark .form-hint,
+.dark .settings-header .description,
+.dark .test-section-description {
+  color: #aaa;
+}
+
+.dark .test-section {
+  background: rgba(42, 42, 42, 0.6);
+  border-color: #555;
+}
+
+.dark .test-section-title {
+  color: #ddd;
 }
 </style>

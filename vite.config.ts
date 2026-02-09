@@ -1,9 +1,21 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { viteStaticCopy } from "vite-plugin-static-copy";
+import Components from "unplugin-vue-components/vite";
+import { PrimeVueResolver } from "@primevue/auto-import-resolver";
 import ModuleData from "./module.json";
 import { writeFileSync } from "fs";
 import { resolve } from "path";
+
+// Custom logger to suppress CSS sourcemap warnings
+const consoleWarn = console.warn;
+console.warn = function filterWarnings(msg, ...args) {
+  const suppressedWarnings = ["Sourcemap is likely to be incorrect"];
+  if (suppressedWarnings.some(entry => msg?.includes?.(entry))) {
+    return;
+  }
+  consoleWarn(msg, ...args);
+};
 
 export default defineConfig(({ mode }) => ({
   // root: "src/", // Source location / esbuild root
@@ -69,7 +81,7 @@ export default defineConfig(({ mode }) => ({
     lib: {
       entry: "src/session-report.ts",
       formats: ["es"],
-      fileName: "scripts/session-report",
+      fileName: format => "session-report.js",
       cssFileName: "styles/session-report"
     },
     rollupOptions: {
@@ -137,6 +149,9 @@ export default defineConfig(({ mode }) => ({
             ]
           })
         ]
-      : []) // No static copy in dev mode.
+      : []), // No static copy in dev mode.
+    Components({
+      resolvers: [PrimeVueResolver()]
+    })
   ]
 }));

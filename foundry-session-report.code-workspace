@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../../systems/foundry-rifts-palladium/src/module"
+		},
+		{
+			"path": "../../../session-report"
 		}
 	],
 	"settings": {}

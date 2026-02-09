@@ -23,33 +23,61 @@
 
       <div class="character-items">
         <div
-          v-for="character in characters"
-          :key="character.id"
-          class="character-item"
+          v-for="folder in charactersByFolder"
+          :key="folder.name"
+          class="folder-group mb-4"
         >
-          <label
-            class="flex items-center gap-3 cursor-pointer p-3 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-          >
-            <input
-              type="checkbox"
-              v-model="selectedCharacters"
-              :value="character.id"
-              class="cursor-pointer"
-            />
-            <img
-              :src="character.img"
-              :alt="character.name"
-              class="character-img"
-            />
-            <div class="character-info flex-1">
-              <div class="character-name font-bold">{{ character.name }}</div>
-              <div
-                class="character-owner text-sm text-gray-600 dark:text-gray-400"
+          <div class="folder-header">
+            <label
+              class="flex items-center gap-2 cursor-pointer p-2 bg-gray-200 dark:bg-gray-700 rounded font-semibold"
+            >
+              <input
+                type="checkbox"
+                :checked="isFolderSelected(folder.name)"
+                @change="toggleFolder(folder.name)"
+                class="cursor-pointer"
+              />
+              <i class="fas fa-folder" style="color: #8b6914"></i>
+              <span>{{ folder.name }}</span>
+              <span class="text-sm text-gray-600 dark:text-gray-400 ml-2"
+                >({{ folder.characters.length }})</span
               >
-                Owner: {{ getOwnerName(character.ownerId) }}
-              </div>
+            </label>
+          </div>
+
+          <div class="folder-characters ml-6 mt-2">
+            <div
+              v-for="character in folder.characters"
+              :key="character.id"
+              class="character-item"
+            >
+              <label
+                class="flex items-center gap-3 cursor-pointer p-3 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+              >
+                <input
+                  type="checkbox"
+                  v-model="selectedCharacters"
+                  :value="character.id"
+                  class="cursor-pointer"
+                />
+                <img
+                  :src="character.img"
+                  :alt="character.name"
+                  class="character-img"
+                />
+                <div class="character-info flex-1">
+                  <div class="character-name font-bold">
+                    {{ character.name }}
+                  </div>
+                  <div
+                    class="character-owner text-sm text-gray-600 dark:text-gray-400"
+                  >
+                    Owner: {{ getOwnerName(character.ownerId) }}
+                  </div>
+                </div>
+              </label>
             </div>
-          </label>
+          </div>
         </div>
       </div>
     </div>
@@ -86,12 +114,15 @@ interface Character {
   id: string;
   name: string;
   img: string;
+  folderId: string | null;
+  folderName: string;
   ownerId: string | null;
 }
 
 interface Props {
   characters: Character[];
   gmId: string | null;
+  initialSelection?: string[];
   dialog?: any;
 }
 
@@ -105,6 +136,68 @@ const allSelected = computed(() => {
     selectedCharacters.value.length === props.characters.length
   );
 });
+
+const charactersByFolder = computed(() => {
+  // Group characters by folder
+  const folderMap = new Map<string, Character[]>();
+
+  props.characters.forEach(char => {
+    const folderName = char.folderName;
+    if (!folderMap.has(folderName)) {
+      folderMap.set(folderName, []);
+    }
+    folderMap.get(folderName)!.push(char);
+  });
+
+  // Convert to array and sort folders
+  const folders = Array.from(folderMap.entries())
+    .map(([name, characters]) => ({
+      name,
+      characters: characters.sort((a, b) => a.name.localeCompare(b.name))
+    }))
+    .sort((a, b) => {
+      // "No Folder" goes last
+      if (a.name === "No Folder") return 1;
+      if (b.name === "No Folder") return -1;
+      return a.name.localeCompare(b.name);
+    });
+
+  return folders;
+});
+
+const isFolderSelected = (folderName: string) => {
+  const folder = charactersByFolder.value.find(f => f.name === folderName);
+  if (!folder) return false;
+
+  const folderCharIds = folder.characters.map(c => c.id);
+  return (
+    folderCharIds.length > 0 &&
+    folderCharIds.every(id => selectedCharacters.value.includes(id))
+  );
+};
+
+const toggleFolder = (folderName: string) => {
+  const folder = charactersByFolder.value.find(f => f.name === folderName);
+  if (!folder) return;
+
+  const folderCharIds = folder.characters.map(c => c.id);
+  const allSelected = folderCharIds.every(id =>
+    selectedCharacters.value.includes(id)
+  );
+
+  if (allSelected) {
+    // Deselect all in folder
+    selectedCharacters.value = selectedCharacters.value.filter(
+      id => !folderCharIds.includes(id)
+    );
+  } else {
+    // Select all in folder
+    const newSelections = folderCharIds.filter(
+      id => !selectedCharacters.value.includes(id)
+    );
+    selectedCharacters.value.push(...newSelections);
+  }
+};
 
 const toggleSelectAll = () => {
   if (allSelected.value) {
@@ -145,8 +238,22 @@ const cancel = () => {
   props.dialog?.submit(null);
 };
 
-// Select all by default
-selectedCharacters.value = props.characters.map(c => c.id);
+// Initialize selection from saved selection or default to all
+if (props.initialSelection && props.initialSelection.length > 0) {
+  // Use saved selection, but only include characters that still exist
+  const existingCharIds = props.characters.map(c => c.id);
+  selectedCharacters.value = props.initialSelection.filter(id =>
+    existingCharIds.includes(id)
+  );
+
+  // If saved selection is empty after filtering, select all
+  if (selectedCharacters.value.length === 0) {
+    selectedCharacters.value = props.characters.map(c => c.id);
+  }
+} else {
+  // No saved selection, select all by default
+  selectedCharacters.value = props.characters.map(c => c.id);
+}
 </script>
 
 <style scoped>
@@ -166,9 +273,25 @@ selectedCharacters.value = props.characters.map(c => c.id);
   overflow-y: auto;
 }
 
+.folder-group {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.folder-header {
+  margin-bottom: 0.5rem;
+}
+
+.folder-characters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .character-item {
   border: 1px solid #ddd;
-  margin-bottom: 0.5rem;
   border-radius: 4px;
 }
 
