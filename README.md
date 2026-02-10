@@ -60,13 +60,3 @@ Configure API endpoint, authentication token, and Pusher keys from the module se
 ## Contributing & Support
 
 - Report issues or contribute on GitHub: https://github.com/Daedalus11069/foundry-session-report
-
-## License
-
-See the repository for license details.
-
----
-
-File: [README.md](README.md)
-
-- Optionally verify Bearer token authentication
