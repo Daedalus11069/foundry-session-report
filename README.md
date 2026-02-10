@@ -11,10 +11,6 @@ A Foundry VTT module that allows Game Masters to send session and character data
 - **Connection Testing**: Test your API connection before sending data
 - **Vue.js Integration**: Modern UI built with Vue 3 and PrimeVue
 
-## Installation
-
-1. Download the module files to your Foundry VTT modules directory:
-
 # Foundry Session Report
 
 Foundry Session Report enables Game Masters to create and send session reports and collect attendee feedback from inside Foundry VTT. It provides configurable report payloads, survey dialogs, and optional real-time update support.
