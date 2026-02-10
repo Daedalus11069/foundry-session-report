@@ -14,108 +14,63 @@ A Foundry VTT module that allows Game Masters to send session and character data
 ## Installation
 
 1. Download the module files to your Foundry VTT modules directory:
-   ```
-   FoundryVTT/Data/modules/session-report/
-   ```
 
-2. Install dependencies:
-   ```bash
-   cd session-report
-   npm install
-   ```
+# Foundry Session Report
 
-3. Build the module:
-   ```bash
-   npm run build
-   ```
+Foundry Session Report enables Game Masters to create and send session reports and collect attendee feedback from inside Foundry VTT. It provides configurable report payloads, survey dialogs, and optional real-time update support.
 
-4. Enable the module in Foundry VTT's module management screen
+## Key Features
 
-## Usage
+- Generate session reports including selected characters and metadata
+- Collect attendee surveys and view results in the GM UI
+- Configurable API endpoint and optional Bearer token authentication
+- Connection testing and simple JSON payloads for server-side processing
+- Optional Pusher integration for real-time updates (requires keys)
 
-### Configure the Module
+## Install (Recommended: GitHub Releases manifest)
 
-1. As a GM, go to **Game Settings** → **Configure Settings** → **Module Settings**
-2. Find "Session Report" and click **Settings**
-3. Enter your API endpoint URL (e.g., `https://api.example.com/session-report`)
-4. Optionally, enter an API key for authentication
-5. Click **Test Connection** to verify the endpoint is reachable
-6. Click **Save Settings**
+This module supports installation via a Foundry manifest URL that points to the `module.json` published with each release on GitHub. When you publish a release with the `module.json` asset, use the following manifest URL in Foundry:
 
-### Send a Session Report
+https://github.com/Daedalus11069/foundry-session-report/releases/latest/download/module.json
 
-1. Click the **Session Report** button in the scene controls (notes section)
-2. Select the characters you want to include in the report
-3. Click **Send Report**
-4. The module will send a POST request with the following data:
+To install:
 
-```json
-{
-  "gmId": "user-id-of-active-gm",
-  "characters": [
-    {
-      "id": "character-id",
-      "name": "Character Name",
-      "img": "path/to/character/image.jpg",
-      "ownerId": "user-id-of-player"
-    }
-  ],
-  "timestamp": "2025-12-18T10:30:00.000Z",
-  "worldName": "My Campaign World"
-}
+1. In Foundry VTT go to `Add-on Modules` → `Install Module` → `Install from URL`.
+2. Paste the manifest URL above and click `Install`.
+3. After installation, enable the module in the `Manage Modules` list for your world.
+
+Note: The `releases/latest/download/module.json` link will always point to the `module.json` attached to your latest GitHub release.
+
+## Development / Local Install
+
+- For local development, place the module folder in Foundry's `Data/modules/` directory or use your dev linking helpers (e.g., `linkDevEnv.bat`).
+- Install dependencies and build locally:
+
+```bash
+npm install
+npm run build
 ```
 
-## API Endpoint Requirements
+Or run watch mode during development:
 
-Your API endpoint should:
-- Accept POST requests
-- Accept JSON payload with `Content-Type: application/json`
-- Optionally verify Bearer token authentication
-- Return HTTP 2xx status for success
-
-### Example Express.js Endpoint
-
-```javascript
-app.post('/session-report', (req, res) => {
-  const { gmId, characters, timestamp, worldName } = req.body;
-  
-  // Verify API key if needed
-  const apiKey = req.headers.authorization?.replace('Bearer ', '');
-  
-  // Process the session report data
-  console.log('Session report received:', {
-    gmId,
-    characterCount: characters.length,
-    timestamp,
-    worldName
-  });
-  
-  res.json({ success: true, message: 'Report received' });
-});
-```
-
-## Development
-
-### Build for Development (with watch mode)
 ```bash
 npm run dev
 ```
 
-### Build for Production
-```bash
-npm run build
-```
+## Configuration
 
-## Compatibility
+Configure API endpoint, authentication token, and Pusher keys from the module settings in Foundry (`Module Settings`). Use `Test Connection` to validate your endpoint.
 
-- **Foundry VTT**: v12 or higher
-- **Vue**: 3.x
-- **PrimeVue**: 3.x
+## Contributing & Support
+
+- Report issues or contribute on GitHub: https://github.com/Daedalus11069/foundry-session-report
 
 ## License
 
-This module is provided as-is for use with Foundry VTT.
+See the repository for license details.
 
-## Support
+---
 
-For issues or questions, please create an issue on the GitHub repository.
+File: [README.md](README.md)
+
+- Optionally verify Bearer token authentication
