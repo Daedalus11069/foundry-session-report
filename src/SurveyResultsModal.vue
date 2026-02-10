@@ -121,7 +121,9 @@
                     >
                       <i class="fas fa-plus"></i>
                     </button>
-                    <span class="gm-reward-label">{{ reward.title }}</span>
+                    <span class="gm-reward-label" :title="reward.description">{{
+                      reward.title
+                    }}</span>
                   </div>
                 </div>
               </td>
@@ -375,12 +377,16 @@ function close() {
 }
 
 .results-content {
-  overflow: auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .table-wrapper {
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .results-table {
@@ -413,7 +419,6 @@ function close() {
 .character-cell {
   text-align: left;
   min-width: 180px;
-  background: #f0f4ff;
   position: sticky;
   left: 0;
   z-index: 5;

@@ -378,8 +378,45 @@ async function openSurveyResults() {
 
     const apiResults = await response.json();
 
+    // Normalize wrapper: some endpoints wrap payload in a `data` field
+    const resultsPayload =
+      apiResults && !apiResults.characters && apiResults.data
+        ? apiResults.data
+        : apiResults;
+
+    // Debug/log the raw API results to help diagnose missing-results issues
+    console.debug(
+      "Session Report | API results:",
+      apiResults,
+      "=> using:",
+      resultsPayload
+    );
+    try {
+      const charCount = Array.isArray(resultsPayload?.characters)
+        ? resultsPayload.characters.length
+        : resultsPayload?.characters
+          ? Object.keys(resultsPayload.characters).length
+          : 0;
+      const playerRewardsCount = Array.isArray(resultsPayload?.player_rewards)
+        ? resultsPayload.player_rewards.length
+        : resultsPayload?.player_rewards
+          ? Object.keys(resultsPayload.player_rewards).length
+          : 0;
+      const gmRewardsCount = Array.isArray(resultsPayload?.gm_rewards)
+        ? resultsPayload.gm_rewards.length
+        : resultsPayload?.gm_rewards
+          ? Object.keys(resultsPayload.gm_rewards).length
+          : 0;
+
+      ui.notifications?.info(
+        `Survey results fetched: ${charCount} characters, ${playerRewardsCount} player rewards, ${gmRewardsCount} GM rewards`
+      );
+    } catch (e) {
+      console.warn("Session Report | Failed to compute apiResults counts", e);
+    }
+
     // Open dialog with API results
-    const dialog = new SurveyResultsModalApp(apiResults);
+    const dialog = new SurveyResultsModalApp(resultsPayload);
     dialog.render(true);
   } catch (error) {
     console.error("Session Report | Failed to fetch survey results:", error);
