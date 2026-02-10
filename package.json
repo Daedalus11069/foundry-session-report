@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "npm run unlink-dev && npm run link-dev && vite",
-    "build": "npm run unlink-dev && npm run link-dev-dist && vite build",
+    "build": "vite build",
+    "build-preview": "npm run unlink-dev && npm run link-dev-dist",
     "preview": "vite preview",
     "link-dev": "./linkDevEnv.bat",
     "link-dev-dist": "./linkDevEnvDist.bat",
