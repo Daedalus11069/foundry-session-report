@@ -239,7 +239,16 @@ async function sendPlayerSurveys() {
   }
 
   // Get all characters and their owners
-  const characters = getPlayerCharacters();
+  let characters = getPlayerCharacters();
+
+  // Filter by selected characters if any are saved
+  const selectedCharacterIds =
+    (game.settings.get(MODULE_ID, "selectedCharacters") as string[]) || [];
+  if (selectedCharacterIds.length > 0) {
+    characters = characters.filter((char: any) =>
+      selectedCharacterIds.includes(char.id)
+    );
+  }
 
   // Build player list with character mappings
   const players: Array<{ owner_id: string; character_id: string }> = [];

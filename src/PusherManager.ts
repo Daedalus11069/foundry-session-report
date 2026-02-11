@@ -244,7 +244,7 @@ export class PusherManager {
       await game.settings.set(this.MODULE_ID, "surveyResults", existingResults);
 
       // Update survey progress tracking
-      const progress = (game.settings.get(
+      let progress = (game.settings.get(
         this.MODULE_ID,
         "surveyProgress"
       ) as any) || {
@@ -254,9 +254,18 @@ export class PusherManager {
       };
 
       // Only track progress if this is for the current survey session
-      if (progress.sessionId === result.sessionId) {
+      // Use == instead of === to allow string/number comparison
+      if (progress.sessionId == result.sessionId) {
         progress.received++;
         await game.settings.set(this.MODULE_ID, "surveyProgress", progress);
+        console.log(
+          "PusherManager | Progress updated:",
+          `${progress.received}/${progress.expected}`
+        );
+      } else {
+        console.warn(
+          "PusherManager | Session ID mismatch - skipping progress update"
+        );
       }
 
       // Look up player name from ownerId (Foundry user ID)
@@ -266,7 +275,7 @@ export class PusherManager {
 
       // Notify GM with player name, character name, and progress
       const progressText =
-        progress.sessionId === result.sessionId
+        progress.sessionId == result.sessionId
           ? ` (${progress.received}/${progress.expected})`
           : "";
 
@@ -293,7 +302,7 @@ export class PusherManager {
 
       // Check if all surveys are completed
       if (
-        progress.sessionId === result.sessionId &&
+        progress.sessionId == result.sessionId &&
         progress.received >= progress.expected
       ) {
         ui.notifications?.info(
