@@ -138,6 +138,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
+import Pusher from "pusher-js";
 
 const localize = (key: string) => {
   return game.i18n.localize(key);
@@ -178,6 +179,10 @@ const testConnection = async () => {
   testing.value = true;
   testResult.value = null;
 
+  const results: string[] = [];
+  let allSuccess = true;
+
+  // Test API Connection
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json"
@@ -198,32 +203,168 @@ const testConnection = async () => {
     });
 
     if (response.ok) {
-      testResult.value = {
-        success: true,
-        message: localize("SESSION_REPORT.TestResult.Success").replace(
-          "{status}",
-          String(response.status)
-        )
-      };
+      results.push(`✓ API: Connected (${response.status})`);
     } else {
-      testResult.value = {
-        success: false,
-        message: localize("SESSION_REPORT.TestResult.Failed")
-          .replace("{status}", String(response.status))
-          .replace("{statusText}", response.statusText)
-      };
+      results.push(`✗ API: Failed (${response.status} ${response.statusText})`);
+      allSuccess = false;
     }
   } catch (error) {
-    testResult.value = {
-      success: false,
-      message: localize("SESSION_REPORT.TestResult.Error").replace(
-        "{message}",
-        error instanceof Error ? error.message : String(error)
-      )
-    };
-  } finally {
-    testing.value = false;
+    results.push(
+      `✗ API: Error - ${error instanceof Error ? error.message : String(error)}`
+    );
+    allSuccess = false;
   }
+
+  // Test Pusher Connection and Auth Endpoint
+  if (pusherAppKey.value && pusherCluster.value) {
+    let pusherTest: Pusher | null = null;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let authTested = false;
+        const timeout = setTimeout(() => {
+          reject(new Error("Connection timeout (10s)"));
+        }, 10000);
+
+        const cleanup = () => {
+          clearTimeout(timeout);
+          if (pusherTest) {
+            try {
+              pusherTest.disconnect();
+            } catch (e) {
+              console.warn("Error disconnecting Pusher:", e);
+            }
+          }
+        };
+
+        // Get auth endpoint
+        const cleanUrl = endpointURL.value.replace(/\/$/, "");
+        const authEndpoint = `${cleanUrl}/pusher/auth`;
+
+        pusherTest = new Pusher(pusherAppKey.value, {
+          cluster: pusherCluster.value,
+          forceTLS: true,
+          authorizer: (channel: any) => {
+            return {
+              authorize: async (socketId: string, callback: any) => {
+                try {
+                  const headers: Record<string, string> = {
+                    "Content-Type": "application/json"
+                  };
+
+                  if (apiKey.value) {
+                    headers["Authorization"] = `Bearer ${apiKey.value}`;
+                  }
+
+                  const response = await fetch(authEndpoint, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({
+                      socket_id: socketId,
+                      channel_name: channel.name
+                    })
+                  });
+
+                  if (response.ok) {
+                    results.push(`✓ Pusher Auth: Endpoint validated`);
+                    const data = await response.json();
+                    callback(null, data);
+                  } else {
+                    results.push(`✗ Pusher Auth: Failed (${response.status})`);
+                    allSuccess = false;
+                    callback(
+                      new Error(`Auth failed: ${response.status}`),
+                      null
+                    );
+                  }
+                  authTested = true;
+                } catch (error: any) {
+                  results.push(
+                    `✗ Pusher Auth: ${error.message || "Unknown error"}`
+                  );
+                  allSuccess = false;
+                  authTested = true;
+                  callback(error, null);
+                }
+              }
+            };
+          }
+        });
+
+        pusherTest.connection.bind("connected", () => {
+          results.push(`✓ Pusher: Connected to ${pusherCluster.value}`);
+
+          // Test private channel subscription to trigger auth
+          // Use a session channel pattern that matches API validation
+          const testChannel = pusherTest!.subscribe("private-session-test");
+
+          testChannel.bind("pusher:subscription_succeeded", () => {
+            cleanup();
+            resolve();
+          });
+
+          testChannel.bind("pusher:subscription_error", (status: any) => {
+            // Auth was tested but subscription failed - still count as partial success if auth worked
+            if (authTested && results.some(r => r.includes("✓ Pusher Auth"))) {
+              cleanup();
+              resolve();
+            } else {
+              cleanup();
+              reject(new Error("Subscription failed"));
+            }
+          });
+
+          // Fallback: if no subscription events fire within 3 seconds, resolve anyway if connected
+          setTimeout(() => {
+            if (pusherTest?.connection.state === "connected") {
+              cleanup();
+              resolve();
+            }
+          }, 3000);
+        });
+
+        pusherTest.connection.bind("error", (err: any) => {
+          const errMsg =
+            err?.error?.data?.message || err?.message || "Unknown error";
+          results.push(`✗ Pusher: ${errMsg}`);
+          allSuccess = false;
+          cleanup();
+          reject(err);
+        });
+
+        pusherTest.connection.bind("failed", () => {
+          results.push(`✗ Pusher: Connection failed`);
+          allSuccess = false;
+          cleanup();
+          reject(new Error("Connection failed"));
+        });
+      });
+    } catch (error) {
+      if (!results.some(r => r.includes("Pusher"))) {
+        results.push(
+          `✗ Pusher: ${error instanceof Error ? error.message : String(error)}`
+        );
+        allSuccess = false;
+      }
+    } finally {
+      // Ensure disconnection in all cases
+      if (pusherTest) {
+        try {
+          (pusherTest as Pusher).disconnect();
+        } catch (e) {
+          console.warn("Error disconnecting Pusher in finally:", e);
+        }
+      }
+    }
+  } else {
+    results.push("⊘ Pusher: Not configured (optional)");
+  }
+
+  testResult.value = {
+    success: allSuccess,
+    message: results.join("\n")
+  };
+
+  testing.value = false;
 };
 
 const save = async () => {
@@ -380,9 +521,21 @@ const cancel = () => {
   border-radius: 3px;
   font-size: 13px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   animation: fadeIn 0.3s;
+  white-space: pre-line;
+  font-family: monospace;
+  line-height: 1.6;
+}
+
+.test-result i {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.test-result span {
+  flex: 1;
 }
 
 .test-result-success {
