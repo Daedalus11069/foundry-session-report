@@ -1,5 +1,8 @@
 import Pusher from "pusher-js";
 
+// Declare Foundry VTT global
+declare const ChatMessage: any;
+
 /**
  * Manages Pusher connection for real-time survey results
  */
@@ -271,6 +274,23 @@ export class PusherManager {
         `Survey completed by ${playerName} (${characterName})${progressText}`
       );
 
+      // Send GM-only chat message
+      const gmUsers = game.users?.filter((u: any) => u.isGM) || [];
+      const gmUserIds = gmUsers.map((u: any) => u.id);
+
+      if (gmUserIds.length > 0) {
+        await ChatMessage.create({
+          content: `<div class="session-report-survey-completion">
+            <h3>📋 Survey Completed</h3>
+            <p><strong>Player:</strong> ${playerName}</p>
+            <p><strong>Character:</strong> ${characterName}</p>
+            <p><strong>Progress:</strong> ${progress.received}/${progress.expected} surveys completed</p>
+          </div>`,
+          whisper: gmUserIds,
+          speaker: { alias: "Session Report" }
+        });
+      }
+
       // Check if all surveys are completed
       if (
         progress.sessionId === result.sessionId &&
@@ -279,6 +299,19 @@ export class PusherManager {
         ui.notifications?.info(
           `All surveys completed! ${progress.received}/${progress.expected} players responded.`
         );
+
+        // Send completion chat message
+        if (gmUserIds.length > 0) {
+          await ChatMessage.create({
+            content: `<div class="session-report-survey-completion">
+              <h3>✅ All Surveys Completed!</h3>
+              <p><strong>Total Responses:</strong> ${progress.received}/${progress.expected}</p>
+              <p>All players have submitted their surveys. You can now view the results.</p>
+            </div>`,
+            whisper: gmUserIds,
+            speaker: { alias: "Session Report" }
+          });
+        }
       }
 
       console.log("PusherManager | Survey result saved:", result);

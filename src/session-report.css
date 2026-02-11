@@ -15,3 +15,30 @@
 .dark .session-report-dialog .window-content {
     background: var(--color-bg-dark, #1a1a1a);
 }
+
+/* Survey Completion Chat Message Styles */
+.session-report-survey-completion {
+    padding: 0.75rem;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border-left: 4px solid #0ea5e9;
+}
+
+.session-report-survey-completion h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0c4a6e;
+}
+
+.session-report-survey-completion p {
+    margin: 0.25rem 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: #334155;
+}
+
+.session-report-survey-completion p strong {
+    color: #1e293b;
+    font-weight: 600;
+}

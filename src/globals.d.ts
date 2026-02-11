@@ -3,6 +3,7 @@ declare global {
   const ui: any;
   const Hooks: any;
   const foundry: any;
+  const ChatMessage: any;
 }
 
 export {};
