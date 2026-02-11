@@ -73,6 +73,8 @@
         </p>
       </div>
 
+      <!-- `Show Buttons To Players` config removed; visibility is GM-only -->
+
       <div class="test-section">
         <h3 class="test-section-title">
           {{ localize("SESSION_REPORT.Settings.TestConnection.Title") }}
@@ -80,35 +82,43 @@
         <p class="test-section-description">
           {{ localize("SESSION_REPORT.Settings.TestConnection.Description") }}
         </p>
-        <Button
-          @click="testConnection"
-          :disabled="!endpointURL || testing"
-          class="btn-test"
-          severity="secondary"
-          size="small"
-        >
-          <i class="fas fa-plug" />
-          {{
-            testing
-              ? localize("SESSION_REPORT.Settings.TestConnection.ButtonTesting")
-              : localize("SESSION_REPORT.Settings.TestConnection.Button")
-          }}
-        </Button>
-        <div
-          v-if="testResult"
-          class="test-result"
-          :class="
-            testResult.success ? 'test-result-success' : 'test-result-error'
-          "
-        >
-          <i
-            :class="
-              testResult.success
-                ? 'fas fa-check-circle'
-                : 'fas fa-exclamation-circle'
-            "
-          />
-          <span>{{ testResult.message }}</span>
+        <div class="test-section-row">
+          <div class="test-section-left">
+            <Button
+              @click="testConnection"
+              :disabled="!endpointURL || testing"
+              class="btn-test"
+              severity="secondary"
+              size="small"
+            >
+              <i class="fas fa-plug" />
+              {{
+                testing
+                  ? localize(
+                      "SESSION_REPORT.Settings.TestConnection.ButtonTesting"
+                    )
+                  : localize("SESSION_REPORT.Settings.TestConnection.Button")
+              }}
+            </Button>
+          </div>
+          <div class="test-section-right">
+            <div
+              v-if="testResult"
+              class="test-result"
+              :class="
+                testResult.success ? 'test-result-success' : 'test-result-error'
+              "
+            >
+              <i
+                :class="
+                  testResult.success
+                    ? 'fas fa-check-circle'
+                    : 'fas fa-exclamation-circle'
+                "
+              />
+              <span>{{ testResult.message }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -230,6 +240,7 @@ const save = async () => {
       "pusherCluster",
       pusherCluster.value
     );
+    // `showButtonsToPlayers` no longer exists
 
     ui.notifications?.info(localize("SESSION_REPORT.Settings.SaveSuccess"));
     props.dialog?.submit(true);
@@ -319,6 +330,28 @@ const cancel = () => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.test-section-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.test-section-left {
+  flex: 0 0 auto;
+}
+
+.test-section-right {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+@media (max-width: 640px) {
+  .test-section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .test-section-title {

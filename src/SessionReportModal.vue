@@ -1,7 +1,7 @@
 <template>
   <div class="session-report-modal">
-    <div class="header-section mb-4">
-      <p class="text-lg">
+    <div class="header-section">
+      <p>
         Select the characters to include in the session report. This will send
         character data, player ownership information, and the GM player ID to
         the configured endpoint.
@@ -9,15 +9,14 @@
     </div>
 
     <div class="character-list" v-if="characters.length > 0">
-      <div class="select-all mb-3">
-        <label class="flex items-center gap-2 cursor-pointer">
+      <div class="select-all">
+        <label class="select-all-label">
           <input
             type="checkbox"
             :checked="allSelected"
             @change="toggleSelectAll"
-            class="cursor-pointer"
           />
-          <span class="font-bold">Select All Characters</span>
+          <span class="select-all-text">Select All Characters</span>
         </label>
       </div>
 
@@ -25,53 +24,43 @@
         <div
           v-for="folder in charactersByFolder"
           :key="folder.name"
-          class="folder-group mb-4"
+          class="folder-group"
         >
           <div class="folder-header">
-            <label
-              class="flex items-center gap-2 cursor-pointer p-2 bg-gray-200 dark:bg-gray-700 rounded font-semibold"
-            >
+            <label class="folder-label">
               <input
                 type="checkbox"
                 :checked="isFolderSelected(folder.name)"
                 @change="toggleFolder(folder.name)"
-                class="cursor-pointer"
               />
               <i class="fas fa-folder" style="color: #8b6914"></i>
               <span>{{ folder.name }}</span>
-              <span class="text-sm text-gray-600 dark:text-gray-400 ml-2"
-                >({{ folder.characters.length }})</span
-              >
+              <span class="folder-count">({{ folder.characters.length }})</span>
             </label>
           </div>
 
-          <div class="folder-characters ml-6 mt-2">
+          <div class="folder-characters">
             <div
               v-for="character in folder.characters"
               :key="character.id"
               class="character-item"
             >
-              <label
-                class="flex items-center gap-3 cursor-pointer p-3 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-              >
+              <label class="character-label">
                 <input
                   type="checkbox"
                   v-model="selectedCharacters"
                   :value="character.id"
-                  class="cursor-pointer"
                 />
                 <img
                   :src="character.img"
                   :alt="character.name"
                   class="character-img"
                 />
-                <div class="character-info flex-1">
-                  <div class="character-name font-bold">
+                <div class="character-info">
+                  <div class="character-name">
                     {{ character.name }}
                   </div>
-                  <div
-                    class="character-owner text-sm text-gray-600 dark:text-gray-400"
-                  >
+                  <div class="character-owner">
                     Owner: {{ getOwnerName(character.ownerId) }}
                   </div>
                 </div>
@@ -83,22 +72,34 @@
     </div>
 
     <div v-else class="no-characters">
-      <p class="text-center text-gray-500 py-8">
-        {{ localize("SESSION_REPORT.Modal.NoCharacters") }}
-      </p>
+      <p>{{ localize("SESSION_REPORT.Modal.NoCharacters") }}</p>
     </div>
 
-    <div class="footer-section mt-6 flex gap-3 justify-end">
-      <button @click="cancel" class="btn btn-secondary">
-        {{ localize("SESSION_REPORT.Modal.CancelButton") }}
-      </button>
-      <button
-        @click="submit"
-        :disabled="selectedCharacters.length === 0"
-        class="btn btn-primary"
-      >
-        {{ localize("SESSION_REPORT.Modal.SendButton") }}
-      </button>
+    <div class="footer-section">
+      <div class="session-status">
+        Session: <strong>{{ sessionIdDisplay }}</strong>
+      </div>
+      <div class="button-row">
+        <button
+          @click="createSession"
+          :disabled="creating"
+          class="btn btn-secondary"
+        >
+          {{ creating ? "Creating..." : "Create Session" }}
+        </button>
+        <div class="button-group-right">
+          <button @click="cancel" class="btn btn-secondary">
+            {{ localize("SESSION_REPORT.Modal.CancelButton") }}
+          </button>
+          <button
+            @click="submit"
+            :disabled="selectedCharacters.length === 0"
+            class="btn btn-primary"
+          >
+            {{ localize("SESSION_REPORT.Modal.SendButton") }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -238,6 +239,83 @@ const cancel = () => {
   props.dialog?.submit(null);
 };
 
+const creating = ref(false);
+const sessionId = ref<number | null>(
+  (game.settings.get("session-report", "sessionId") as number) || null
+);
+
+const sessionIdDisplay = computed(() => {
+  return sessionId.value && sessionId.value !== 0
+    ? String(sessionId.value)
+    : "(none)";
+});
+
+const createSession = async () => {
+  const endpointURL = game.settings.get(
+    "session-report",
+    "endpointURL"
+  ) as string;
+  const apiKey = game.settings.get("session-report", "apiKey") as string;
+  const gameId = game.settings.get("session-report", "gameId") as number;
+
+  if (!endpointURL || endpointURL.trim() === "") {
+    ui.notifications?.warn(localize("SESSION_REPORT.Modal.NoEndpoint"));
+    return;
+  }
+
+  try {
+    creating.value = true;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json"
+    };
+
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+    const payload: any = {
+      characters: props.characters.map(c => ({
+        id: c.id,
+        name: c.name,
+        img: c.img,
+        ownerId: c.ownerId
+      }))
+    };
+
+    // Include game_id if it exists in settings
+    if (gameId && gameId !== 0) {
+      payload.game_id = gameId;
+    }
+
+    const response = await fetch(`${endpointURL}/set-characters`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok)
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+    const data = await response.json();
+
+    await game.settings.set("session-report", "gameId", data.game_id);
+    await game.settings.set("session-report", "sessionId", data.session_id);
+
+    sessionId.value = data.session_id;
+
+    ui.notifications?.info(`Session ${data.session_id} created successfully`);
+  } catch (error) {
+    console.error(
+      "Session Report | Failed to create session from modal:",
+      error
+    );
+    ui.notifications?.error(
+      "Failed to create session. See console for details."
+    );
+  } finally {
+    creating.value = false;
+  }
+};
+
 // Initialize selection from saved selection or default to all
 if (props.initialSelection && props.initialSelection.length > 0) {
   // Use saved selection, but only include characters that still exist
@@ -268,9 +346,39 @@ if (props.initialSelection && props.initialSelection.length > 0) {
   height: 100%;
 }
 
+.header-section {
+  margin-bottom: 1rem;
+}
+
+.header-section p {
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
 .character-list {
   max-height: 400px;
   overflow-y: auto;
+}
+
+.select-all {
+  margin-bottom: 1rem;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.select-all-text {
+  font-weight: bold;
+}
+
+.character-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .folder-group {
@@ -284,7 +392,26 @@ if (props.initialSelection && props.initialSelection.length > 0) {
   margin-bottom: 0.5rem;
 }
 
+.folder-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  background: #e5e7eb;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.folder-count {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-left: 0.5rem;
+}
+
 .folder-characters {
+  margin-left: 1.5rem;
+  margin-top: 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -295,11 +422,42 @@ if (props.initialSelection && props.initialSelection.length > 0) {
   border-radius: 4px;
 }
 
+.character-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  padding: 0.75rem;
+  border-radius: 4px;
+}
+
+.character-label:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
 .character-img {
   width: 48px;
   height: 48px;
   border-radius: 4px;
   object-fit: cover;
+}
+
+.character-info {
+  flex: 1;
+}
+
+.character-name {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+}
+
+.character-owner {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+input[type="checkbox"] {
+  cursor: pointer;
 }
 
 .btn {
@@ -309,6 +467,36 @@ if (props.initialSelection && props.initialSelection.length > 0) {
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.footer-section {
+  margin-top: 1.5rem;
+}
+
+.session-status {
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.button-group-right {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.no-characters {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
 }
 
 .btn:disabled {
@@ -334,7 +522,23 @@ if (props.initialSelection && props.initialSelection.length > 0) {
   background: #5a6268;
 }
 
+.dark .folder-label {
+  background: #374151;
+}
+
+.dark .folder-count {
+  color: #9ca3af;
+}
+
 .dark .character-item {
   border-color: #444;
+}
+
+.dark .character-label:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dark .character-owner {
+  color: #9ca3af;
 }
 </style>

@@ -26,10 +26,6 @@
         "Name": "Auto-Create New Session",
         "Hint": "Automatically create a new session when sending a report (skips the confirmation prompt)"
       },
-      "ShowButtonsToPlayers": {
-        "Name": "Show Session Report Buttons",
-        "Hint": "Enable the Session Report button on player character sheets"
-      },
       "ActorTypeFilter": {
         "Name": "Actor Type Filter",
         "Hint": "Specify which actor types to include (e.g., 'pc' for player characters, 'character', 'npc', etc.). Configure this based on your game system."
@@ -69,7 +65,6 @@
       "CopySuccess": "Survey URL copied to clipboard!",
       "CopyFallback": "Please copy the URL manually",
       "NoEndpoint": "Please configure the API endpoint URL in module settings first.",
-      "Sending": "Sending survey URLs to players...",
       "Success": "Survey URLs sent to {count} player(s)",
       "Error": "Failed to send survey URLs: {error}",
       "NoPlayers": "No eligible players found to send surveys to"

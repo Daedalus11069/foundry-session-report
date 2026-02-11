@@ -1,6 +1,5 @@
 import { VueDialog } from "./VueDialog";
 import SessionReportModal from "./SessionReportModal.vue";
-import SessionControlModal from "./SessionControlModal.vue";
 import SettingsConfig from "./SettingsConfig.vue";
 import SurveyUrlDialog from "./SurveyUrlDialog.vue";
 import SurveyResultsModal from "./SurveyResultsModal.vue";
@@ -35,8 +34,6 @@ const MODULE_ID = "session-report";
 
 // Register module settings
 Hooks.once("init", () => {
-  console.log("Session Report | Initializing module");
-
   // Register endpoint URL setting
   game.settings.register(MODULE_ID, "endpointURL", {
     name: "SESSION_REPORT.Settings.EndpointURL.Name",
@@ -84,7 +81,7 @@ Hooks.once("init", () => {
     scope: "world",
     config: true,
     type: Number,
-    default: 0
+    default: null
   });
 
   // Register auto-create session setting
@@ -98,14 +95,8 @@ Hooks.once("init", () => {
   });
 
   // Register button visibility setting (GM only)
-  game.settings.register(MODULE_ID, "showButtonsToPlayers", {
-    name: "SESSION_REPORT.Settings.ShowButtonsToPlayers.Name",
-    hint: "SESSION_REPORT.Settings.ShowButtonsToPlayers.Hint",
-    scope: "world",
-    config: false, // Controlled via scene control toggle
-    type: Boolean,
-    default: false
-  });
+  // NOTE: `showButtonsToPlayers` config removed; button visibility
+  // is now controlled by module logic (show only to GMs when relevant).
 
   // Register actor type filter setting
   game.settings.register(MODULE_ID, "actorTypeFilter", {
@@ -178,22 +169,12 @@ function getPlayerCharacters(): any[] {
   ) as string;
   const actors = game.actors || [];
 
-  console.log(`Session Report | Actor type filter: "${actorTypeFilter}"`);
-  console.log(`Session Report | Total actors in world: ${actors.length}`);
-
   // Get unique actor types
   const actorTypes = new Set(actors.map((a: any) => a.type));
-  console.log(
-    `Session Report | Available actor types: ${Array.from(actorTypes).join(", ")}`
-  );
 
   // Filter by the specified actor type (default: "pc")
   const filtered = actors.filter(
     (actor: any) => actor.type === actorTypeFilter
-  );
-
-  console.log(
-    `Session Report | Filtered characters (type="${actorTypeFilter}"): ${filtered.length}`
   );
 
   if (filtered.length === 0 && actors.length > 0) {
@@ -212,7 +193,6 @@ function getPlayerCharacters(): any[] {
  * Send survey URLs to all players (excluding main GM)
  */
 async function sendPlayerSurveys() {
-  // Check if endpoint is configured
   const endpointURL = game.settings.get(MODULE_ID, "endpointURL") as string;
 
   if (!endpointURL || endpointURL.trim() === "") {
@@ -223,16 +203,39 @@ async function sendPlayerSurveys() {
   }
 
   // Connect to Pusher for real-time survey results
-  console.log("Session Report | Connecting to Pusher for survey results");
   pusherManager.connect();
 
   // Get session ID
   const sessionId = game.settings.get(MODULE_ID, "sessionId") as number;
-  if (!sessionId) {
-    ui.notifications?.warn(
-      "No session ID configured. Please send a session report first."
-    );
-    return;
+  // If there is no session configured, offer to create one before sending
+  // surveys so the GM can decide.
+  let effectiveSessionId = sessionId;
+  if (!effectiveSessionId) {
+    const shouldCreate = await foundry.applications.api.DialogV2.confirm({
+      window: { title: "Create New Session?" },
+      content: `<p>No active session found. Would you like to create a new session before sending surveys?</p>`,
+      modal: true,
+      rejectClose: false
+    });
+
+    if (shouldCreate) {
+      try {
+        await createNewSessionFromButton();
+        effectiveSessionId = game.settings.get(
+          MODULE_ID,
+          "sessionId"
+        ) as number;
+      } catch (error) {
+        console.error("Session Report | Failed to create session:", error);
+        ui.notifications?.error(
+          "Failed to create new session. Cannot send surveys."
+        );
+        return;
+      }
+    } else {
+      ui.notifications?.warn("No session configured. Aborting send surveys.");
+      return;
+    }
   }
 
   // Get all characters and their owners
@@ -272,10 +275,19 @@ async function sendPlayerSurveys() {
     return;
   }
 
-  ui.notifications?.info(game.i18n.localize("SESSION_REPORT.Survey.Sending"));
-
   try {
     const apiKey = game.settings.get(MODULE_ID, "apiKey") as string;
+    const gameId = game.settings.get(MODULE_ID, "gameId") as number;
+
+    const payload: any = {
+      session_id: sessionId,
+      players: players
+    };
+
+    // Include game_id if it exists in settings
+    if (gameId && gameId !== 0) {
+      payload.game_id = gameId;
+    }
 
     const response = await fetch(`${endpointURL}/get-url`, {
       method: "POST",
@@ -283,10 +295,7 @@ async function sendPlayerSurveys() {
         "Content-Type": "application/json",
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
       },
-      body: JSON.stringify({
-        session_id: sessionId,
-        players: players
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -316,10 +325,33 @@ async function sendPlayerSurveys() {
     if (sentCount > 0) {
       // Initialize survey progress tracking
       await game.settings.set(MODULE_ID, "surveyProgress", {
-        sessionId: sessionId,
+        sessionId: effectiveSessionId,
         expected: players.length,
         received: 0
       });
+
+      // Update the button in Foundry's internal controls structure
+      if (ui.controls?.controls) {
+        const tokensControl = Object.values(ui.controls.controls).find(
+          (c: any) => c.name === "tokens"
+        ) as any;
+        if (tokensControl && tokensControl.tools) {
+          const manageSurveyTool =
+            tokensControl.tools.manageSurvey ||
+            tokensControl.tools["manageSurvey"];
+          if (manageSurveyTool) {
+            manageSurveyTool.title = "Stop Survey";
+            manageSurveyTool.icon = "fas fa-stop-circle";
+            ui.controls.render();
+          } else {
+            console.warn(
+              "Session Report | Could not find manageSurvey tool in tools object"
+            );
+          }
+        } else {
+          console.warn("Session Report | Could not find tokens control");
+        }
+      }
 
       ui.notifications?.info(
         game.i18n
@@ -507,13 +539,36 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
     onChange: () => openSessionReportModal(),
     visible: true
   };
+  // Dynamically change the Survey button based on whether a survey is active
+  // Read fresh state from settings each time the hook fires
+  const surveyProgress = game.settings.get(MODULE_ID, "surveyProgress") as any;
+  const surveyId = surveyProgress?.sessionId;
+  const surveyActive = Number.isInteger(surveyId) && surveyId > 0;
 
-  controls.tokens.tools.sendSurvey = {
-    name: "sendSurvey",
-    title: game.i18n.localize("SESSION_REPORT.Button.SendSurvey"),
-    icon: "fas fa-poll-h",
+  // Single button with dynamic properties based on survey state
+  controls.tokens.tools.manageSurvey = {
+    name: "manageSurvey",
+    title: surveyActive
+      ? "Stop Survey"
+      : game.i18n.localize("SESSION_REPORT.Button.SendSurvey"),
+    icon: surveyActive ? "fas fa-stop-circle" : "fas fa-poll-h",
     button: true,
-    onChange: () => sendPlayerSurveys(),
+    onChange: () => {
+      // Re-read state fresh when clicked to avoid using stale closure value
+      const currentProgress = game.settings.get(
+        MODULE_ID,
+        "surveyProgress"
+      ) as any;
+      const currentSurveyId = currentProgress?.sessionId;
+      const isCurrentlyActive =
+        Number.isInteger(currentSurveyId) && currentSurveyId > 0;
+
+      if (isCurrentlyActive) {
+        closeSurvey();
+      } else {
+        sendPlayerSurveys();
+      }
+    },
     visible: true
   };
 
@@ -525,24 +580,10 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
     onChange: () => openSurveyResults(),
     visible: true
   };
-
-  controls.tokens.tools.closeSurvey = {
-    name: "closeSurvey",
-    title: game.i18n.localize("SESSION_REPORT.Button.CloseSurvey"),
-    icon: "fas fa-stop-circle",
-    button: true,
-    onChange: () => closeSurvey(),
-    visible: true
-  };
-
-  controls.tokens.tools.manageSession = {
-    name: "manageSession",
-    title: "Manage Session Report",
-    icon: "fas fa-cog",
-    button: true,
-    onChange: () => openSessionControlModal(),
-    visible: true
-  };
+  // `Close Survey` control removed: active survey is managed by the
+  // dynamic Send/Stop Survey button above.
+  // Removed the left-side "Manage Session Report" scene-control button
+  // in favor of exposing session management options in module settings.
 });
 
 /**
@@ -577,32 +618,9 @@ async function openSessionReportModal() {
       );
     }
   }
-  // Otherwise, if no session exists, ask if they want to create one
-  else if (!currentSessionId || currentSessionId === 0) {
-    const shouldCreate = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Create New Session?" },
-      content: `<p>No active session found. Would you like to create a new session before sending the report?</p>`,
-      modal: true,
-      rejectClose: false
-    });
-
-    if (shouldCreate) {
-      try {
-        await createNewSessionFromButton();
-      } catch (error) {
-        console.error("Session Report | Failed to create session:", error);
-        ui.notifications?.error(
-          "Failed to create new session. Cannot send report without a session."
-        );
-        return;
-      }
-    } else {
-      ui.notifications?.warn(
-        "Cannot send report without a session. Please create a session first."
-      );
-      return;
-    }
-  }
+  // Previously the modal prompted to create a session if none existed.
+  // Session management is now handled inside the modal UI, so we no
+  // longer block opening the modal when no session exists.
 
   // Gather character data
   const characters = getPlayerCharacters();
@@ -675,6 +693,7 @@ async function openSessionReportModal() {
 async function createNewSessionFromButton() {
   const endpointURL = game.settings.get(MODULE_ID, "endpointURL") as string;
   const apiKey = game.settings.get(MODULE_ID, "apiKey") as string;
+  const gameId = game.settings.get(MODULE_ID, "gameId") as number;
   const actorTypeFilter = game.settings.get(
     MODULE_ID,
     "actorTypeFilter"
@@ -694,22 +713,29 @@ async function createNewSessionFromButton() {
     headers["Authorization"] = `Bearer ${apiKey}`;
   }
 
+  const payload: any = {
+    characters: characters.map((char: any) => ({
+      id: char.id,
+      name: char.name,
+      img: char.img,
+      ownerId: char.ownership
+        ? Object.keys(char.ownership).find(
+            (userId: string) =>
+              char.ownership[userId] === 3 && userId !== "default"
+          )
+        : null
+    }))
+  };
+
+  // Include game_id if it exists in settings
+  if (gameId && gameId !== 0) {
+    payload.game_id = gameId;
+  }
+
   const response = await fetch(`${endpointURL}/set-characters`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      characters: characters.map((char: any) => ({
-        id: char.id,
-        name: char.name,
-        img: char.img,
-        ownerId: char.ownership
-          ? Object.keys(char.ownership).find(
-              (userId: string) =>
-                char.ownership[userId] === 3 && userId !== "default"
-            )
-          : null
-      }))
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
@@ -725,24 +751,8 @@ async function createNewSessionFromButton() {
   ui.notifications?.info(`Session ${data.session_id} created successfully`);
 }
 
-/**
- * Open the session control modal
- */
-async function openSessionControlModal() {
-  await VueDialog.show(
-    SessionControlModal,
-    {},
-    {
-      window: {
-        title: "Session Report Control",
-        icon: "fas fa-cog"
-      },
-      position: {
-        width: 600
-      }
-    }
-  );
-}
+// Session control is now handled via Settings UI; the modal component
+// was removed to simplify the UX.
 
 /**
  * Send the session report to the configured endpoint
@@ -809,6 +819,7 @@ async function fetchExternalUrl(
 ): Promise<string | null> {
   const endpointURL = game.settings.get(MODULE_ID, "endpointURL") as string;
   const apiKey = game.settings.get(MODULE_ID, "apiKey") as string;
+  const gameId = game.settings.get(MODULE_ID, "gameId") as number;
 
   if (!endpointURL || endpointURL.trim() === "") {
     console.warn("Session Report | No endpoint URL configured");
@@ -824,14 +835,21 @@ async function fetchExternalUrl(
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
 
+    const payload: any = {
+      owner_id: ownerId,
+      character_id: characterId,
+      session_id: sessionId
+    };
+
+    // Include game_id if it exists in settings
+    if (gameId && gameId !== 0) {
+      payload.game_id = gameId;
+    }
+
     const response = await fetch(`${endpointURL}/get-url`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        owner_id: ownerId,
-        character_id: characterId,
-        session_id: sessionId
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -848,8 +866,6 @@ async function fetchExternalUrl(
 
 // Register external buttons
 Hooks.on("session-report.registerExternalButtons", async (registry: any) => {
-  console.log("Session Report | Registering external button");
-
   // Register the button
   registry.register({
     id: "session-report-link",
@@ -888,30 +904,42 @@ Hooks.on("session-report.registerExternalButtons", async (registry: any) => {
       return url || "#";
     },
     isVisible: (actor: any) => {
-      // Only show if endpoint is configured (session ID is now optional)
+      // Only show if endpoint is configured
       const endpointURL = game.settings.get(MODULE_ID, "endpointURL") as string;
-      const sessionId = game.settings.get(MODULE_ID, "sessionId") as number;
-      const showToPlayers = game.settings.get(
-        MODULE_ID,
-        "showButtonsToPlayers"
-      ) as boolean;
-
-      // Check basic requirements (sessionId is now optional)
       const hasRequiredSettings = endpointURL && endpointURL.trim() !== "";
+      if (!hasRequiredSettings) return false;
 
-      if (!hasRequiredSettings) {
-        return false;
-      }
-
-      // Always show to GMs, only show to players if enabled
-      return game.user?.isGM || showToPlayers;
+      // Only GMs should see the admin external button
+      return !!game.user?.isGM;
     }
   });
 });
 
 // Initialize socket listener for survey URLs
 Hooks.once("ready", () => {
-  console.log("Session Report | Module ready");
+  // Validate and clean up stale survey state on init
+  const surveyProgress = game.settings.get(MODULE_ID, "surveyProgress") as any;
+  const surveyId = surveyProgress?.sessionId;
+
+  // If surveyId is not a positive integer, reset it to ensure clean state
+  if (!Number.isInteger(surveyId) || surveyId <= 0) {
+    game.settings.set(MODULE_ID, "surveyProgress", {
+      sessionId: null,
+      expected: 0,
+      received: 0
+    });
+  }
+
+  // Watch for surveyProgress changes and update scene controls reactively
+  Hooks.on("updateSetting", (setting: any) => {
+    if (setting.key === `${MODULE_ID}.surveyProgress`) {
+      try {
+        ui.controls?.render();
+      } catch (err) {
+        console.error("Session Report | Error rendering controls:", err);
+      }
+    }
+  });
 
   // Listen for socket messages (for showing survey URLs to players)
   game.socket?.on("module.session-report", (data: any) => {
@@ -926,8 +954,42 @@ Hooks.once("ready", () => {
 /**
  * Close the survey and disconnect from Pusher
  */
-function closeSurvey() {
-  console.log("Session Report | Closing survey and disconnecting from Pusher");
+async function closeSurvey() {
   pusherManager.disconnect();
   ui.notifications?.info("Survey closed. No longer listening for results.");
+  // Clean up active survey state and update controls
+  await stopSurveyCleanup();
+}
+
+// Clear survey progress and update controls when stopping an active survey
+async function stopSurveyCleanup() {
+  await game.settings.set(MODULE_ID, "surveyProgress", {
+    sessionId: null,
+    expected: 0,
+    received: 0
+  });
+
+  // Update the button in Foundry's internal controls structure
+  if (ui.controls?.controls) {
+    const tokensControl = Object.values(ui.controls.controls).find(
+      (c: any) => c.name === "tokens"
+    ) as any;
+    if (tokensControl && tokensControl.tools) {
+      const manageSurveyTool =
+        tokensControl.tools.manageSurvey || tokensControl.tools["manageSurvey"];
+      if (manageSurveyTool) {
+        manageSurveyTool.title = game.i18n.localize(
+          "SESSION_REPORT.Button.SendSurvey"
+        );
+        manageSurveyTool.icon = "fas fa-poll-h";
+        ui.controls.render();
+      } else {
+        console.warn(
+          "Session Report | Could not find manageSurvey tool in tools object"
+        );
+      }
+    } else {
+      console.warn("Session Report | Could not find tokens control");
+    }
+  }
 }
