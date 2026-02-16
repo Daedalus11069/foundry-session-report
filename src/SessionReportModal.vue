@@ -318,16 +318,15 @@ const createSession = async () => {
 
 // Initialize selection from saved selection or default to all
 if (props.initialSelection && props.initialSelection.length > 0) {
-  // Use saved selection, but only include characters that still exist
+  // Use provided selection, but only include characters that still exist
   const existingCharIds = props.characters.map(c => c.id);
   selectedCharacters.value = props.initialSelection.filter(id =>
     existingCharIds.includes(id)
   );
 
-  // If saved selection is empty after filtering, select all
-  if (selectedCharacters.value.length === 0) {
-    selectedCharacters.value = props.characters.map(c => c.id);
-  }
+  // Note: If the filtered selection is empty, we keep it empty rather than
+  // selecting all. This allows for explicit "no selection" when tokens are
+  // selected on the canvas but their actors don't match the character type filter.
 } else {
   // No saved selection, select all by default
   selectedCharacters.value = props.characters.map(c => c.id);

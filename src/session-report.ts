@@ -634,9 +634,23 @@ async function openSessionReportModal() {
   // Gather character data
   const characters = getPlayerCharacters();
 
-  // Get saved character selection
+  // Check if any tokens are selected on the canvas
+  const hasSelectedTokens = (game.canvas.tokens?.controlled?.length ?? 0) > 0;
+
+  // Get currently selected tokens' actor IDs
+  const selectedActorIds =
+    (game.canvas.tokens?.controlled
+      ?.map((token: any) => token.actor?.id)
+      .filter((id: string | undefined) => id !== undefined) as string[]) || [];
+
+  // Determine initial selection:
+  // - If tokens are selected on canvas: use ONLY those actors (ignoring saved selection entirely)
+  // - If no tokens selected: fall back to saved selection
   const savedSelection =
     (game.settings.get(MODULE_ID, "selectedCharacters") as string[]) || [];
+  const initialSelection = hasSelectedTokens
+    ? selectedActorIds
+    : savedSelection;
 
   // Open the modal
   const result = await VueDialog.show(
@@ -671,7 +685,7 @@ async function openSessionReportModal() {
           : null
       })),
       gmId: game.users?.find((u: any) => u.isGM && u.active)?.id || null,
-      initialSelection: savedSelection
+      initialSelection: initialSelection
     },
     {
       window: {
