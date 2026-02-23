@@ -157,6 +157,16 @@ Hooks.once("init", () => {
     type: Array,
     default: []
   });
+
+  // Register pending survey URLs for offline players
+  game.settings.register(MODULE_ID, "pendingSurveyUrls", {
+    name: "Pending Survey URLs",
+    hint: "Stores survey URLs for players who were offline when surveys were sent",
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {}
+  });
 });
 
 /**
@@ -316,22 +326,50 @@ async function sendPlayerSurveys() {
     const data = await response.json();
     const urls = data.urls || [];
 
+    // Get pending URLs object
+    const pendingUrls =
+      (game.settings.get(MODULE_ID, "pendingSurveyUrls") as Record<
+        string,
+        any
+      >) || {};
+
     // Send URLs to each player via socket
     let sentCount = 0;
+    let queuedCount = 0;
     for (const urlData of urls) {
       const user = game.users?.find((u: any) => u.id === urlData.owner_id);
       if (user) {
-        game.socket?.emit("module.session-report", {
-          action: "showSurveyUrl",
-          userId: urlData.owner_id,
-          url: urlData.url,
-          characterName: urlData.character_name
-        });
-        sentCount++;
+        // Check if user is currently connected
+        if (user.active) {
+          // User is online, send immediately via socket
+          game.socket?.emit("module.session-report", {
+            action: "showSurveyUrl",
+            userId: urlData.owner_id,
+            url: urlData.url,
+            characterName: urlData.character_name
+          });
+          sentCount++;
+        } else {
+          // User is offline, queue the URL for when they connect
+          pendingUrls[urlData.owner_id] = {
+            url: urlData.url,
+            characterName: urlData.character_name,
+            timestamp: new Date().toISOString()
+          };
+          queuedCount++;
+          console.log(
+            `Session Report | Queued survey URL for offline player: ${user.name}`
+          );
+        }
       }
     }
 
-    if (sentCount > 0) {
+    // Save pending URLs if any were queued
+    if (queuedCount > 0) {
+      await game.settings.set(MODULE_ID, "pendingSurveyUrls", pendingUrls);
+    }
+
+    if (sentCount > 0 || queuedCount > 0) {
       // Initialize survey progress tracking
       await game.settings.set(MODULE_ID, "surveyProgress", {
         sessionId: effectiveSessionId,
@@ -362,11 +400,19 @@ async function sendPlayerSurveys() {
         }
       }
 
-      ui.notifications?.info(
-        game.i18n
+      // Build notification message
+      let message = "";
+      if (sentCount > 0 && queuedCount > 0) {
+        message = `Survey URLs sent to ${sentCount} online player(s) and queued for ${queuedCount} offline player(s)`;
+      } else if (sentCount > 0) {
+        message = game.i18n
           .localize("SESSION_REPORT.Survey.Success")
-          .replace("{count}", String(sentCount))
-      );
+          .replace("{count}", String(sentCount));
+      } else if (queuedCount > 0) {
+        message = `Survey URLs queued for ${queuedCount} offline player(s). They will see the dialog when they connect.`;
+      }
+
+      ui.notifications?.info(message);
     } else {
       ui.notifications?.warn(
         game.i18n.localize("SESSION_REPORT.Survey.NoPlayers")
@@ -972,6 +1018,58 @@ Hooks.once("ready", () => {
       dialog.render(true);
     }
   });
+
+  // Check for pending survey URLs when player connects
+  // This runs after the socket listener is set up
+  setTimeout(async () => {
+    if (!game.user?.isGM) {
+      const pendingUrls =
+        (game.settings.get(MODULE_ID, "pendingSurveyUrls") as Record<
+          string,
+          any
+        >) || {};
+
+      const userId = game.user?.id;
+      if (userId && pendingUrls[userId]) {
+        const pendingData = pendingUrls[userId];
+        console.log(
+          "Session Report | Found pending survey URL for this player",
+          pendingData
+        );
+
+        // Show the dialog
+        const dialog = new SurveyUrlDialogApp(pendingData.url);
+        dialog.render(true);
+
+        // Clear this pending URL (GMs need to do this via socket to update settings)
+        game.socket?.emit("module.session-report", {
+          action: "clearPendingUrl",
+          userId: userId
+        });
+      }
+    }
+  }, 1000); // Small delay to ensure everything is initialized
+
+  // GM listens for requests to clear pending URLs
+  if (game.user?.isGM) {
+    game.socket?.on("module.session-report", async (data: any) => {
+      if (data.action === "clearPendingUrl" && data.userId) {
+        const pendingUrls =
+          (game.settings.get(MODULE_ID, "pendingSurveyUrls") as Record<
+            string,
+            any
+          >) || {};
+
+        if (pendingUrls[data.userId]) {
+          delete pendingUrls[data.userId];
+          await game.settings.set(MODULE_ID, "pendingSurveyUrls", pendingUrls);
+          console.log(
+            `Session Report | Cleared pending URL for user ${data.userId}`
+          );
+        }
+      }
+    });
+  }
 });
 
 /**
