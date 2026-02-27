@@ -269,15 +269,26 @@ async function sendPlayerSurveys() {
           const ownerIds = Object.keys(char.ownership).filter(
             userId => char.ownership[userId] === 3 && userId !== "default"
           );
-          const nonGmOwners = ownerIds.filter(userId => {
+
+          if (ownerIds.length === 0) return null;
+
+          // If only one owner, use it
+          if (ownerIds.length === 1) {
+            return ownerIds[0];
+          }
+
+          // Multiple owners: prefer non-active users over active GMs
+          const nonActiveOwners = ownerIds.filter(userId => {
             const user = game.users?.get(userId);
-            return user && !user.isGM;
+            return !user || !user.active;
           });
-          return nonGmOwners.length > 0
-            ? nonGmOwners[0]
-            : ownerIds.length > 0
-              ? ownerIds[0]
-              : null;
+
+          if (nonActiveOwners.length > 0) {
+            return nonActiveOwners[0];
+          }
+
+          // Fallback: use first owner
+          return ownerIds[0];
         })()
       : null;
 
@@ -336,37 +347,44 @@ async function sendPlayerSurveys() {
     // Send URLs to each player via socket
     let sentCount = 0;
     let queuedCount = 0;
+
     for (const urlData of urls) {
       const user = game.users?.find((u: any) => u.id === urlData.owner_id);
-      if (user) {
-        // Check if user is currently connected
-        if (user.active) {
-          // User is online, send immediately via socket
-          game.socket?.emit("module.session-report", {
-            action: "showSurveyUrl",
-            userId: urlData.owner_id,
-            url: urlData.url,
-            characterName: urlData.character_name
-          });
-          sentCount++;
-        } else {
-          // User is offline, queue the URL for when they connect
-          pendingUrls[urlData.owner_id] = {
-            url: urlData.url,
-            characterName: urlData.character_name,
-            timestamp: new Date().toISOString()
-          };
-          queuedCount++;
-          console.log(
-            `Session Report | Queued survey URL for offline player: ${user.name}`
-          );
-        }
+
+      // If user is found and active, send immediately
+      if (user && user.active) {
+        // User is online, send immediately via socket
+        game.socket?.emit("module.session-report", {
+          action: "showSurveyUrl",
+          userId: urlData.owner_id,
+          url: urlData.url,
+          characterName: urlData.character_name
+        });
+        sentCount++;
+      } else {
+        // User is either offline (not in game.users) or not active - queue the URL
+        pendingUrls[urlData.owner_id] = {
+          url: urlData.url,
+          characterName: urlData.character_name,
+          timestamp: new Date().toISOString()
+        };
+        queuedCount++;
       }
     }
 
     // Save pending URLs if any were queued
     if (queuedCount > 0) {
-      await game.settings.set(MODULE_ID, "pendingSurveyUrls", pendingUrls);
+      try {
+        await game.settings.set(MODULE_ID, "pendingSurveyUrls", pendingUrls);
+      } catch (error) {
+        console.error(
+          "Session Report | Failed to save pending survey URLs:",
+          error
+        );
+        ui.notifications?.error(
+          "Failed to save pending survey URLs. Check the console for details."
+        );
+      }
     }
 
     if (sentCount > 0 || queuedCount > 0) {
@@ -715,18 +733,25 @@ async function openSessionReportModal() {
                 userId => char.ownership[userId] === 3 && userId !== "default"
               );
 
-              // Filter out GMs
-              const nonGmOwners = ownerIds.filter(userId => {
+              if (ownerIds.length === 0) return null;
+
+              // If only one owner, use it
+              if (ownerIds.length === 1) {
+                return ownerIds[0];
+              }
+
+              // Multiple owners: prefer non-active users over active GMs
+              const nonActiveOwners = ownerIds.filter(userId => {
                 const user = game.users?.get(userId);
-                return user && !user.isGM;
+                return !user || !user.active;
               });
 
-              // Return first non-GM owner, or first GM owner if no non-GMs, or null
-              return nonGmOwners.length > 0
-                ? nonGmOwners[0]
-                : ownerIds.length > 0
-                  ? ownerIds[0]
-                  : null;
+              if (nonActiveOwners.length > 0) {
+                return nonActiveOwners[0];
+              }
+
+              // Fallback: use first owner
+              return ownerIds[0];
             })()
           : null
       })),
@@ -1010,65 +1035,145 @@ Hooks.once("ready", () => {
     }
   });
 
-  // Listen for socket messages (for showing survey URLs to players)
-  game.socket?.on("module.session-report", (data: any) => {
+  // Listen for socket messages (consolidated handler for all actions)
+  game.socket?.on("module.session-report", async (data: any) => {
+    // Handle showing survey URL to players
     if (data.action === "showSurveyUrl" && data.userId === game.user?.id) {
       // Show the survey URL dialog to this user
       const dialog = new SurveyUrlDialogApp(data.url);
       dialog.render(true);
     }
-  });
 
-  // Check for pending survey URLs when player connects
-  // This runs after the socket listener is set up
-  setTimeout(async () => {
-    if (!game.user?.isGM) {
+    // GM handles clearing pending URLs
+    if (data.action === "clearPendingUrl" && game.user?.isGM) {
       const pendingUrls =
         (game.settings.get(MODULE_ID, "pendingSurveyUrls") as Record<
           string,
           any
         >) || {};
 
-      const userId = game.user?.id;
-      if (userId && pendingUrls[userId]) {
-        const pendingData = pendingUrls[userId];
-        console.log(
-          "Session Report | Found pending survey URL for this player",
-          pendingData
-        );
-
-        // Show the dialog
-        const dialog = new SurveyUrlDialogApp(pendingData.url);
-        dialog.render(true);
-
-        // Clear this pending URL (GMs need to do this via socket to update settings)
-        game.socket?.emit("module.session-report", {
-          action: "clearPendingUrl",
-          userId: userId
-        });
+      if (pendingUrls[data.userId]) {
+        delete pendingUrls[data.userId];
+        await game.settings.set(MODULE_ID, "pendingSurveyUrls", pendingUrls);
       }
+    }
+  });
+
+  // Check for pending survey URLs when player connects
+  // This runs after the socket listener is set up
+  setTimeout(async () => {
+    // Check for pending URLs for all users (including GMs who may also be players)
+    const pendingUrls =
+      (game.settings.get(MODULE_ID, "pendingSurveyUrls") as Record<
+        string,
+        any
+      >) || {};
+
+    const userId = game.user?.id;
+
+    if (userId && pendingUrls[userId]) {
+      const pendingData = pendingUrls[userId];
+
+      // Show the dialog
+      const dialog = new SurveyUrlDialogApp(pendingData.url);
+      dialog.render(true);
+
+      // Clear this pending URL (GMs need to do this via socket to update settings)
+      game.socket?.emit("module.session-report", {
+        action: "clearPendingUrl",
+        userId: userId
+      });
     }
   }, 1000); // Small delay to ensure everything is initialized
 
-  // GM listens for requests to clear pending URLs
+  // Add debug helper functions for GM (only in dev/testing)
   if (game.user?.isGM) {
-    game.socket?.on("module.session-report", async (data: any) => {
-      if (data.action === "clearPendingUrl" && data.userId) {
-        const pendingUrls =
+    (window as any).sessionReportDebug = {
+      // List all users and their active status
+      listUsers: () => {
+        console.log("=== All Users ===");
+        game.users?.forEach((user: any) => {
+          console.log(
+            `- ${user.name} (ID: ${user.id}): active=${user.active}, isGM=${user.isGM}`
+          );
+        });
+      },
+      // List all characters and their owners
+      listCharacters: () => {
+        const actorTypeFilter = game.settings.get(
+          MODULE_ID,
+          "actorTypeFilter"
+        ) as string;
+        const actors = game.actors || [];
+        const filtered = actors.filter(
+          (actor: any) => actor.type === actorTypeFilter
+        );
+
+        console.log(
+          `=== All ${actorTypeFilter} Characters (${filtered.length}) ===`
+        );
+        filtered.forEach((char: any) => {
+          console.log(`\nCharacter: ${char.name} (${char.id})`);
+          console.log(`  Ownership:`, char.ownership);
+
+          // Find owners with level 3
+          const level3Owners = Object.keys(char.ownership || {}).filter(
+            userId => char.ownership[userId] === 3 && userId !== "default"
+          );
+
+          if (level3Owners.length > 0) {
+            console.log(`  Level 3 Owners:`);
+            level3Owners.forEach(ownerId => {
+              const user = game.users?.get(ownerId);
+              if (user) {
+                console.log(
+                  `    - ${user.name} (${ownerId}): active=${user.active}, isGM=${user.isGM}`
+                );
+              } else {
+                console.log(
+                  `    - Unknown user (${ownerId}): not in game.users`
+                );
+              }
+            });
+          } else {
+            console.log(`  No level 3 owners found`);
+          }
+        });
+      },
+      // View current pending URLs
+      viewPending: () => {
+        const pending = game.settings.get(MODULE_ID, "pendingSurveyUrls");
+        console.log("=== Pending Survey URLs ===", pending);
+        return pending;
+      },
+      // Manually add a test pending URL for a user
+      addTestPending: async (
+        userId: string,
+        testUrl: string = "https://example.com/test"
+      ) => {
+        const pending =
           (game.settings.get(MODULE_ID, "pendingSurveyUrls") as Record<
             string,
             any
           >) || {};
-
-        if (pendingUrls[data.userId]) {
-          delete pendingUrls[data.userId];
-          await game.settings.set(MODULE_ID, "pendingSurveyUrls", pendingUrls);
-          console.log(
-            `Session Report | Cleared pending URL for user ${data.userId}`
-          );
-        }
+        pending[userId] = {
+          url: testUrl,
+          characterName: "Test Character",
+          timestamp: new Date().toISOString()
+        };
+        await game.settings.set(MODULE_ID, "pendingSurveyUrls", pending);
+        console.log("Test pending URL added for user:", userId);
+        return pending;
+      },
+      // Clear all pending URLs
+      clearAllPending: async () => {
+        await game.settings.set(MODULE_ID, "pendingSurveyUrls", {});
+        console.log("All pending URLs cleared");
       }
-    });
+    };
+    console.log(
+      "Session Report | Debug helpers available: sessionReportDebug.listUsers(), sessionReportDebug.listCharacters(), sessionReportDebug.viewPending(), sessionReportDebug.addTestPending(userId, url), sessionReportDebug.clearAllPending()"
+    );
   }
 });
 

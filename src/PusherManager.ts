@@ -12,9 +12,7 @@ export class PusherManager {
   private readonly MODULE_ID = "session-report";
   private isConnected = false;
 
-  constructor() {
-    console.log("PusherManager | Initializing");
-  }
+  constructor() {}
 
   /**
    * Initialize Pusher connection
@@ -96,13 +94,11 @@ export class PusherManager {
 
       // Set up connection state listeners
       this.pusher.connection.bind("connected", () => {
-        console.log("PusherManager | Connected to Pusher");
         this.isConnected = true;
         ui.notifications?.info("Connected to survey results channel");
       });
 
       this.pusher.connection.bind("disconnected", () => {
-        console.log("PusherManager | Disconnected from Pusher");
         this.isConnected = false;
       });
 
@@ -118,16 +114,10 @@ export class PusherManager {
 
       // Subscribe to the session channel
       const channelName = `private-session-${sessionId}`;
-      console.log(`PusherManager | Subscribing to channel: ${channelName}`);
-
       this.channel = this.pusher.subscribe(channelName);
 
       // Set up channel event listeners
-      this.channel.bind("pusher:subscription_succeeded", () => {
-        console.log(
-          `PusherManager | Successfully subscribed to ${channelName}`
-        );
-      });
+      this.channel.bind("pusher:subscription_succeeded", () => {});
 
       this.channel.bind("pusher:subscription_error", (status: any) => {
         console.error(
@@ -141,7 +131,6 @@ export class PusherManager {
 
       // Listen for survey completion events
       this.channel.bind("client-survey-completed", (data: any) => {
-        console.log("PusherManager | Received survey completion:", data);
         this.handleSurveyCompletion(data);
       });
 
@@ -172,7 +161,6 @@ export class PusherManager {
       this.pusher = null;
 
       this.isConnected = false;
-      console.log("PusherManager | Disconnected");
     } catch (error) {
       console.warn("PusherManager | Error during disconnect:", error);
       // Force cleanup even if error occurs
@@ -196,8 +184,6 @@ export class PusherManager {
     // Remove trailing slash if present
     const cleanUrl = endpointURL.replace(/\/$/, "");
     const authUrl = `${cleanUrl}/pusher/auth`;
-
-    console.log(`PusherManager | Auth endpoint: ${authUrl}`);
     return authUrl;
   }
 
@@ -210,7 +196,6 @@ export class PusherManager {
 
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
-      console.log("PusherManager | Using API key for auth");
     } else {
       console.warn("PusherManager | No API key configured");
     }
@@ -258,10 +243,6 @@ export class PusherManager {
       if (progress.sessionId == result.sessionId) {
         progress.received++;
         await game.settings.set(this.MODULE_ID, "surveyProgress", progress);
-        console.log(
-          "PusherManager | Progress updated:",
-          `${progress.received}/${progress.expected}`
-        );
       } else {
         console.warn(
           "PusherManager | Session ID mismatch - skipping progress update"
@@ -322,8 +303,6 @@ export class PusherManager {
           });
         }
       }
-
-      console.log("PusherManager | Survey result saved:", result);
     } catch (error) {
       console.error("PusherManager | Failed to save survey result:", error);
       ui.notifications?.error("Failed to save survey result");
