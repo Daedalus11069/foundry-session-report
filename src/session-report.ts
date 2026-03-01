@@ -277,14 +277,19 @@ async function sendPlayerSurveys() {
             return ownerIds[0];
           }
 
-          // Multiple owners: prefer non-active users over active GMs
-          const nonActiveOwners = ownerIds.filter(userId => {
+          // Multiple owners: prefer active users (players who are present/online)
+          const activeOwners = ownerIds.filter(userId => {
             const user = game.users?.get(userId);
-            return !user || !user.active;
+            return user && user.active;
           });
 
-          if (nonActiveOwners.length > 0) {
-            return nonActiveOwners[0];
+          if (activeOwners.length > 0) {
+            // Prefer active non-GMs over active GMs
+            const activeNonGMs = activeOwners.filter(userId => {
+              const user = game.users?.get(userId);
+              return user && !user.isGM;
+            });
+            return activeNonGMs.length > 0 ? activeNonGMs[0] : activeOwners[0];
           }
 
           // Fallback: use first owner
@@ -369,6 +374,39 @@ async function sendPlayerSurveys() {
           timestamp: new Date().toISOString()
         };
         queuedCount++;
+      }
+    }
+
+    // Send chat message to GM with all survey links
+    if (urls.length > 0) {
+      const gmUserIds = game.users
+        ?.filter((u: any) => u.isGM)
+        .map((u: any) => u.id);
+
+      if (gmUserIds && gmUserIds.length > 0) {
+        const linksHtml = urls
+          .map((urlData: any) => {
+            const user = game.users?.find(
+              (u: any) => u.id === urlData.owner_id
+            );
+            const userName = user?.name || "Unknown User";
+            const status = user && user.active ? "✅ Online" : "⏸️ Offline";
+            return `<li><strong>${userName}</strong> (${urlData.character_name}) - ${status}<br/><a href="${urlData.url}" target="_blank" style="font-size: 0.9em; word-break: break-all;">${urlData.url}</a></li>`;
+          })
+          .join("");
+
+        await ChatMessage.create({
+          content: `<div class="session-report-survey-links" style="border: 2px solid #4a90e2; padding: 10px; border-radius: 5px; background: rgba(74, 144, 226, 0.1);">
+            <h3 style="margin-top: 0;">📊 Survey Links Sent</h3>
+            <p><strong>Session ID:</strong> ${effectiveSessionId}</p>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+              ${linksHtml}
+            </ul>
+            <p style="margin-bottom: 0;"><em>Online players received dialog immediately. Offline players will see it when they connect.</em></p>
+          </div>`,
+          whisper: gmUserIds,
+          speaker: { alias: "Session Report" }
+        });
       }
     }
 
