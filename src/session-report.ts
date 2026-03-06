@@ -1220,6 +1220,10 @@ Hooks.once("ready", () => {
  */
 async function closeSurvey() {
   pusherManager.disconnect();
+
+  // Clear any pending survey URLs
+  await game.settings.set(MODULE_ID, "pendingSurveyUrls", {});
+
   ui.notifications?.info("Survey closed. No longer listening for results.");
   // Clean up active survey state and update controls
   await stopSurveyCleanup();
