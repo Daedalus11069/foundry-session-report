@@ -200,6 +200,43 @@ function getPlayerCharacters(): any[] {
 }
 
 /**
+ * Determine the owner ID for a character using consistent logic
+ * Handles characters with single or multiple owners
+ */
+function determineCharacterOwner(char: any): string | null {
+  if (!char.ownership) return null;
+
+  const ownerIds = Object.keys(char.ownership).filter(
+    userId => char.ownership[userId] === 3 && userId !== "default"
+  );
+
+  if (ownerIds.length === 0) return null;
+
+  // If only one owner, use it
+  if (ownerIds.length === 1) {
+    return ownerIds[0];
+  }
+
+  // Multiple owners: prefer active users (players who are present/online)
+  const activeOwners = ownerIds.filter(userId => {
+    const user = game.users?.get(userId);
+    return user && user.active;
+  });
+
+  if (activeOwners.length > 0) {
+    // Prefer active non-GMs over active GMs
+    const activeNonGMs = activeOwners.filter(userId => {
+      const user = game.users?.get(userId);
+      return user && !user.isGM;
+    });
+    return activeNonGMs.length > 0 ? activeNonGMs[0] : activeOwners[0];
+  }
+
+  // Fallback: use first owner
+  return ownerIds[0];
+}
+
+/**
  * Send survey URLs to all players (excluding main GM)
  */
 async function sendPlayerSurveys() {
@@ -264,38 +301,7 @@ async function sendPlayerSurveys() {
   const players: Array<{ owner_id: string; character_id: string }> = [];
 
   for (const char of characters) {
-    const ownerId = char.ownership
-      ? (() => {
-          const ownerIds = Object.keys(char.ownership).filter(
-            userId => char.ownership[userId] === 3 && userId !== "default"
-          );
-
-          if (ownerIds.length === 0) return null;
-
-          // If only one owner, use it
-          if (ownerIds.length === 1) {
-            return ownerIds[0];
-          }
-
-          // Multiple owners: prefer active users (players who are present/online)
-          const activeOwners = ownerIds.filter(userId => {
-            const user = game.users?.get(userId);
-            return user && user.active;
-          });
-
-          if (activeOwners.length > 0) {
-            // Prefer active non-GMs over active GMs
-            const activeNonGMs = activeOwners.filter(userId => {
-              const user = game.users?.get(userId);
-              return user && !user.isGM;
-            });
-            return activeNonGMs.length > 0 ? activeNonGMs[0] : activeOwners[0];
-          }
-
-          // Fallback: use first owner
-          return ownerIds[0];
-        })()
-      : null;
+    const ownerId = determineCharacterOwner(char);
 
     if (ownerId) {
       players.push({
@@ -341,6 +347,26 @@ async function sendPlayerSurveys() {
 
     const data = await response.json();
     const urls = data.urls || [];
+    const missingCharacters = data.missing_characters || [];
+
+    // Warn about missing characters
+    if (missingCharacters.length > 0) {
+      console.warn(
+        "Session Report | Some characters not found in backend database:",
+        missingCharacters
+      );
+
+      const missingNames = missingCharacters.map((mc: any) => {
+        const char = characters.find((c: any) => c.id === mc.character_id);
+        return char ? char.name : mc.character_id;
+      });
+
+      ui.notifications?.warn(
+        `${missingCharacters.length} character(s) not synced: ${missingNames.join(", ")}. ` +
+          `Create a new session to sync all characters.`,
+        { permanent: true }
+      );
+    }
 
     // Get pending URLs object
     const pendingUrls =
@@ -850,12 +876,7 @@ async function createNewSessionFromButton() {
       id: char.id,
       name: char.name,
       img: char.img,
-      ownerId: char.ownership
-        ? Object.keys(char.ownership).find(
-            (userId: string) =>
-              char.ownership[userId] === 3 && userId !== "default"
-          )
-        : null
+      ownerId: determineCharacterOwner(char)
     }))
   };
 
