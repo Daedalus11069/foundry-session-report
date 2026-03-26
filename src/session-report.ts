@@ -212,28 +212,13 @@ function determineCharacterOwner(char: any): string | null {
 
   if (ownerIds.length === 0) return null;
 
-  // If only one owner, use it
-  if (ownerIds.length === 1) {
-    return ownerIds[0];
-  }
-
-  // Multiple owners: prefer active users (players who are present/online)
-  const activeOwners = ownerIds.filter(userId => {
+  // Prefer non-GM owners regardless of online status
+  const nonGmOwners = ownerIds.filter(userId => {
     const user = game.users?.get(userId);
-    return user && user.active;
+    return user && !user.isGM;
   });
 
-  if (activeOwners.length > 0) {
-    // Prefer active non-GMs over active GMs
-    const activeNonGMs = activeOwners.filter(userId => {
-      const user = game.users?.get(userId);
-      return user && !user.isGM;
-    });
-    return activeNonGMs.length > 0 ? activeNonGMs[0] : activeOwners[0];
-  }
-
-  // Fallback: use first owner
-  return ownerIds[0];
+  return nonGmOwners.length > 0 ? nonGmOwners[0] : ownerIds[0];
 }
 
 /**
@@ -319,9 +304,53 @@ async function sendPlayerSurveys() {
   try {
     const apiKey = game.settings.get(MODULE_ID, "apiKey") as string;
     const gameId = game.settings.get(MODULE_ID, "gameId") as number;
+    const actorTypeFilter = game.settings.get(
+      MODULE_ID,
+      "actorTypeFilter"
+    ) as string;
+
+    // Sync ALL characters to backend before generating URLs
+    // This ensures any new characters are in the database
+    // We must send ALL characters because the backend deletes characters not in the list
+    const allCharacters = getPlayerCharacters();
+
+    const syncPayload: any = {
+      characters: allCharacters.map((char: any) => ({
+        id: char.id,
+        name: char.name,
+        img: char.img,
+        ownerId: determineCharacterOwner(char)
+      }))
+    };
+
+    if (gameId && gameId !== 0) {
+      syncPayload.game_id = gameId;
+    }
+
+    const syncResponse = await fetch(`${endpointURL}/set-characters`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+      },
+      body: JSON.stringify(syncPayload)
+    });
+
+    if (!syncResponse.ok) {
+      const errorText = await syncResponse.text();
+      console.error("Session Report | Failed to sync characters:", errorText);
+      throw new Error(`Failed to sync characters: ${syncResponse.status}`);
+    }
+
+    // Get the new session ID from the sync response
+    const syncData = await syncResponse.json();
+    effectiveSessionId = syncData.session_id;
+
+    // Update the stored session ID
+    await game.settings.set(MODULE_ID, "sessionId", effectiveSessionId);
 
     const payload: any = {
-      session_id: sessionId,
+      session_id: effectiveSessionId,
       players: players
     };
 
@@ -363,7 +392,7 @@ async function sendPlayerSurveys() {
 
       ui.notifications?.warn(
         `${missingCharacters.length} character(s) not synced: ${missingNames.join(", ")}. ` +
-          `Create a new session to sync all characters.`,
+          `Create a new session to link characters.`,
         { permanent: true }
       );
     }
@@ -410,25 +439,43 @@ async function sendPlayerSurveys() {
         .map((u: any) => u.id);
 
       if (gmUserIds && gmUserIds.length > 0) {
-        const linksHtml = urls
-          .map((urlData: any) => {
-            const user = game.users?.find(
-              (u: any) => u.id === urlData.owner_id
-            );
-            const userName = user?.name || "Unknown User";
-            const status = user && user.active ? "✅ Online" : "⏸️ Offline";
-            return `<li><strong>${userName}</strong> (${urlData.character_name}) - ${status}<br/><a href="${urlData.url}" target="_blank" style="font-size: 0.9em; word-break: break-all;">${urlData.url}</a></li>`;
-          })
-          .join("");
+        const sentUrls = urls.filter((urlData: any) => {
+          const user = game.users?.find((u: any) => u.id === urlData.owner_id);
+          return user && user.active;
+        });
+        const pendingUrlsList = urls.filter((urlData: any) => {
+          const user = game.users?.find((u: any) => u.id === urlData.owner_id);
+          return !user || !user.active;
+        });
+
+        const buildListItems = (list: any[]) =>
+          list
+            .map((urlData: any) => {
+              const user = game.users?.find(
+                (u: any) => u.id === urlData.owner_id
+              );
+              const userName = user?.name || "Unknown User";
+              return `<li><strong>${userName}</strong> (${urlData.character_name})<br/><a href="${urlData.url}" target="_blank" style="font-size: 0.9em; word-break: break-all;">${urlData.url}</a></li>`;
+            })
+            .join("");
+
+        let sectionsHtml = "";
+
+        if (sentUrls.length > 0) {
+          sectionsHtml += `<p style="margin: 8px 0 4px;"><strong>✅ Sent (${sentUrls.length} online)</strong></p>
+            <ul style="margin: 0 0 8px; padding-left: 20px;">${buildListItems(sentUrls)}</ul>`;
+        }
+
+        if (pendingUrlsList.length > 0) {
+          sectionsHtml += `<p style="margin: 8px 0 4px;"><strong>⏸️ Pending (${pendingUrlsList.length} offline — will show on connect)</strong></p>
+            <ul style="margin: 0; padding-left: 20px;">${buildListItems(pendingUrlsList)}</ul>`;
+        }
 
         await ChatMessage.create({
           content: `<div class="session-report-survey-links" style="border: 2px solid #4a90e2; padding: 10px; border-radius: 5px; background: rgba(74, 144, 226, 0.1);">
-            <h3 style="margin-top: 0;">📊 Survey Links Sent</h3>
-            <p><strong>Session ID:</strong> ${effectiveSessionId}</p>
-            <ul style="margin: 10px 0; padding-left: 20px;">
-              ${linksHtml}
-            </ul>
-            <p style="margin-bottom: 0;"><em>Online players received dialog immediately. Offline players will see it when they connect.</em></p>
+            <h3 style="margin-top: 0;">📊 Survey Links</h3>
+            <p style="margin: 0 0 8px;"><strong>Session ID:</strong> ${effectiveSessionId}</p>
+            ${sectionsHtml}
           </div>`,
           whisper: gmUserIds,
           speaker: { alias: "Session Report" }
@@ -799,23 +846,13 @@ async function openSessionReportModal() {
 
               if (ownerIds.length === 0) return null;
 
-              // If only one owner, use it
-              if (ownerIds.length === 1) {
-                return ownerIds[0];
-              }
-
-              // Multiple owners: prefer non-active users over active GMs
-              const nonActiveOwners = ownerIds.filter(userId => {
+              // Prefer non-GM owners regardless of online status
+              const nonGmOwners = ownerIds.filter(userId => {
                 const user = game.users?.get(userId);
-                return !user || !user.active;
+                return user && !user.isGM;
               });
 
-              if (nonActiveOwners.length > 0) {
-                return nonActiveOwners[0];
-              }
-
-              // Fallback: use first owner
-              return ownerIds[0];
+              return nonGmOwners.length > 0 ? nonGmOwners[0] : ownerIds[0];
             })()
           : null
       })),
