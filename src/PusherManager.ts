@@ -130,7 +130,7 @@ export class PusherManager {
       });
 
       // Listen for survey completion events
-      this.channel.bind("client-survey-completed", (data: any) => {
+      this.channel.bind("survey-completed", (data: any) => {
         this.handleSurveyCompletion(data);
       });
 
