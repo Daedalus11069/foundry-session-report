@@ -30,6 +30,10 @@ import "./session-report.css";
  *   });
  */
 
+// Foundry namespaced classes (v13+)
+const { Hooks } = foundry.helpers;
+const { ChatMessage } = foundry.documents;
+
 const MODULE_ID = "session-report";
 
 // Register module settings
@@ -168,6 +172,18 @@ Hooks.once("init", () => {
     default: {}
   });
 });
+
+/**
+ * Re-render the scene controls, forcing the getSceneControlButtons hook to
+ * run again so tool titles/icons are rebuilt from the current survey state.
+ */
+function refreshSceneControls() {
+  try {
+    ui.controls?.render({ reset: true });
+  } catch (err) {
+    console.error("Session Report | Error rendering controls:", err);
+  }
+}
 
 /**
  * Filter actors based on the configured actor type
@@ -506,28 +522,8 @@ async function sendPlayerSurveys() {
         received: 0
       });
 
-      // Update the button in Foundry's internal controls structure
-      if (ui.controls?.controls) {
-        const tokensControl = Object.values(ui.controls.controls).find(
-          (c: any) => c.name === "tokens"
-        ) as any;
-        if (tokensControl && tokensControl.tools) {
-          const manageSurveyTool =
-            tokensControl.tools.manageSurvey ||
-            tokensControl.tools["manageSurvey"];
-          if (manageSurveyTool) {
-            manageSurveyTool.title = "Stop Survey";
-            manageSurveyTool.icon = "fas fa-stop-circle";
-            ui.controls.render();
-          } else {
-            console.warn(
-              "Session Report | Could not find manageSurvey tool in tools object"
-            );
-          }
-        } else {
-          console.warn("Session Report | Could not find tokens control");
-        }
-      }
+      // Re-fire getSceneControlButtons so the survey button reflects new state
+      refreshSceneControls();
 
       // Build notification message
       let message = "";
@@ -717,6 +713,7 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
   // Add tools to the token control group
   controls.tokens.tools.sendReport = {
     name: "sendReport",
+    order: Object.keys(controls.tokens.tools).length,
     title: game.i18n.localize("SESSION_REPORT.Button.SendReport"),
     icon: "fas fa-file-export",
     button: true,
@@ -732,6 +729,7 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
   // Single button with dynamic properties based on survey state
   controls.tokens.tools.manageSurvey = {
     name: "manageSurvey",
+    order: Object.keys(controls.tokens.tools).length,
     title: surveyActive
       ? "Stop Survey"
       : game.i18n.localize("SESSION_REPORT.Button.SendSurvey"),
@@ -758,6 +756,7 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
 
   controls.tokens.tools.viewResults = {
     name: "viewResults",
+    order: Object.keys(controls.tokens.tools).length,
     title: game.i18n.localize("SESSION_REPORT.SurveyResults.ViewResults"),
     icon: "fas fa-chart-bar",
     button: true,
@@ -810,11 +809,11 @@ async function openSessionReportModal() {
   const characters = getPlayerCharacters();
 
   // Check if any tokens are selected on the canvas
-  const hasSelectedTokens = (game.canvas.tokens?.controlled?.length ?? 0) > 0;
+  const hasSelectedTokens = (canvas?.tokens?.controlled?.length ?? 0) > 0;
 
   // Get currently selected tokens' actor IDs
   const selectedActorIds =
-    (game.canvas.tokens?.controlled
+    (canvas?.tokens?.controlled
       ?.map((token: any) => token.actor?.id)
       .filter((id: string | undefined) => id !== undefined) as string[]) || [];
 
@@ -1123,11 +1122,7 @@ Hooks.once("ready", () => {
   // Watch for surveyProgress changes and update scene controls reactively
   Hooks.on("updateSetting", (setting: any) => {
     if (setting.key === `${MODULE_ID}.surveyProgress`) {
-      try {
-        ui.controls?.render();
-      } catch (err) {
-        console.error("Session Report | Error rendering controls:", err);
-      }
+      refreshSceneControls();
     }
   });
 
@@ -1295,27 +1290,6 @@ async function stopSurveyCleanup() {
     received: 0
   });
 
-  // Update the button in Foundry's internal controls structure
-  if (ui.controls?.controls) {
-    const tokensControl = Object.values(ui.controls.controls).find(
-      (c: any) => c.name === "tokens"
-    ) as any;
-    if (tokensControl && tokensControl.tools) {
-      const manageSurveyTool =
-        tokensControl.tools.manageSurvey || tokensControl.tools["manageSurvey"];
-      if (manageSurveyTool) {
-        manageSurveyTool.title = game.i18n.localize(
-          "SESSION_REPORT.Button.SendSurvey"
-        );
-        manageSurveyTool.icon = "fas fa-poll-h";
-        ui.controls.render();
-      } else {
-        console.warn(
-          "Session Report | Could not find manageSurvey tool in tools object"
-        );
-      }
-    } else {
-      console.warn("Session Report | Could not find tokens control");
-    }
-  }
+  // Re-fire getSceneControlButtons so the survey button reflects new state
+  refreshSceneControls();
 }

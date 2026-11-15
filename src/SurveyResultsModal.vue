@@ -155,8 +155,9 @@ import { computed, ref, reactive } from "vue";
 
 // Access Foundry's global objects
 declare const game: any;
-declare const Hooks: any;
 declare const ui: any;
+declare const foundry: any;
+const Hooks = foundry.helpers.Hooks;
 
 const localize = (key: string): string => {
   return game.i18n.localize(key);

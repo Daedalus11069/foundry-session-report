@@ -1,7 +1,7 @@
 import Pusher from "pusher-js";
 
-// Declare Foundry VTT global
-declare const ChatMessage: any;
+// Foundry namespaced classes (v13+)
+const ChatMessage = foundry.documents.ChatMessage;
 
 /**
  * Manages Pusher connection for real-time survey results
