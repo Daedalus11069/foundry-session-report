@@ -1,2 +1,2 @@
 @echo off
-mklink /J %localappdata%\FoundryVTT\Data\modules\session-report %cd%\dist
+mklink /J G:\herd\www\foundry-vtt-server-data\Data\modules\session-report %cd%\dist

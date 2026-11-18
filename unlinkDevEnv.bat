@@ -1,5 +1,5 @@
 @echo off
-set "TARGET=%localappdata%\FoundryVTT\Data\modules\session-report"
+set "TARGET=G:\herd\www\foundry-vtt-server-data\Data\modules\session-report"
 
 if exist "%TARGET%" (
 	rmdir "%TARGET%"

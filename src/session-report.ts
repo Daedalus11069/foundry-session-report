@@ -707,13 +707,21 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
   // Only show to GMs
   if (!game.user?.isGM) return;
 
-  // Check if token controls exist
-  if (!controls.tokens) return;
+  // Dedicated control group so all Session Report buttons live in one menu
+  const tools: Record<string, any> = {};
+  controls.sessionReport = {
+    name: "sessionReport",
+    order: Object.keys(controls).length,
+    title: "Session Report",
+    icon: "fas fa-file-export",
+    visible: true,
+    activeTool: "sendReport",
+    tools
+  };
 
-  // Add tools to the token control group
-  controls.tokens.tools.sendReport = {
+  tools.sendReport = {
     name: "sendReport",
-    order: Object.keys(controls.tokens.tools).length,
+    order: Object.keys(tools).length,
     title: game.i18n.localize("SESSION_REPORT.Button.SendReport"),
     icon: "fas fa-file-export",
     button: true,
@@ -727,9 +735,9 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
   const surveyActive = Number.isInteger(surveyId) && surveyId > 0;
 
   // Single button with dynamic properties based on survey state
-  controls.tokens.tools.manageSurvey = {
+  tools.manageSurvey = {
     name: "manageSurvey",
-    order: Object.keys(controls.tokens.tools).length,
+    order: Object.keys(tools).length,
     title: surveyActive
       ? "Stop Survey"
       : game.i18n.localize("SESSION_REPORT.Button.SendSurvey"),
@@ -754,9 +762,9 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
     visible: true
   };
 
-  controls.tokens.tools.viewResults = {
+  tools.viewResults = {
     name: "viewResults",
-    order: Object.keys(controls.tokens.tools).length,
+    order: Object.keys(tools).length,
     title: game.i18n.localize("SESSION_REPORT.SurveyResults.ViewResults"),
     icon: "fas fa-chart-bar",
     button: true,
