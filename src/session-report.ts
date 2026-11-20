@@ -250,9 +250,6 @@ async function sendPlayerSurveys() {
     return;
   }
 
-  // Connect to Pusher for real-time survey results
-  pusherManager.connect();
-
   // Get session ID
   const sessionId = game.settings.get(MODULE_ID, "sessionId") as number;
   // If there is no session configured, offer to create one before sending
@@ -364,6 +361,10 @@ async function sendPlayerSurveys() {
 
     // Update the stored session ID
     await game.settings.set(MODULE_ID, "sessionId", effectiveSessionId);
+
+    // Connect to Pusher now that the session ID is final (the channel is
+    // per-session, so connecting earlier could use a missing/stale ID)
+    await pusherManager.connect();
 
     const payload: any = {
       session_id: effectiveSessionId,
@@ -715,7 +716,9 @@ Hooks.on("getSceneControlButtons", (controls: any) => {
     title: "Session Report",
     icon: "fas fa-file-export",
     visible: true,
-    activeTool: "sendReport",
+    // No activeTool: activating the group would otherwise trigger the default
+    // tool (sendReport, a button), which opened the modal just by clicking the group.
+    activeTool: "",
     tools
   };
 
@@ -1125,6 +1128,16 @@ Hooks.once("ready", () => {
       expected: 0,
       received: 0
     });
+  }
+
+  // Reconnect to the results channel after a reload if a survey is in progress
+  if (
+    game.user?.isGM &&
+    Number.isInteger(surveyId) &&
+    surveyId > 0 &&
+    (surveyProgress?.received ?? 0) < (surveyProgress?.expected ?? 0)
+  ) {
+    pusherManager.connect();
   }
 
   // Watch for surveyProgress changes and update scene controls reactively

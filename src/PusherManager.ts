@@ -46,6 +46,9 @@ export class PusherManager {
         return false;
       }
 
+      // Drop any previous connection so we never double-bind handlers
+      this.disconnect();
+
       // Initialize Pusher
       this.pusher = new Pusher(pusherKey, {
         cluster: pusherCluster,
